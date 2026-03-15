@@ -24,6 +24,7 @@
 #import <stdatomic.h>
 #import <signal.h>
 #import <Cocoa/Cocoa.h>
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import "appine_core.h"
 #import "appine_backend.h"
 
@@ -274,22 +275,78 @@ static void appine_add_tab(id<AppineBackend> backend);
     (void)sender;
     NSOpenPanel *panel = [NSOpenPanel openPanel];
     panel.canChooseFiles = YES;
+    panel.canChooseDirectories = NO;
+    
     if ([panel runModal] == NSModalResponseOK && panel.URL) {
         NSString *path = panel.URL.path;
-        NSString *ext = path.pathExtension.lowercaseString;
+        
+        // 获取文件类型，如果没有后缀名可能返回 nil
+        UTType *fileType = [UTType typeWithFilenameExtension:path.pathExtension];
         
         id<AppineBackend> backend;
-        if ([ext isEqualToString:@"pdf"]) {
+        
+        if ([fileType conformsToType:UTTypePDF]) {
             backend = appine_create_pdf_backend(path);
-        } else if ([@[@"doc", @"docx", @"xls", @"xlsx", @"ppt", @"pptx", @"pages", @"numbers", @"key", @"rtf"] containsObject:ext]) {
-            backend = appine_create_quicklook_backend(path);
-        } else {
+        } 
+        else if ([fileType conformsToType:UTTypeHTML] || 
+                 [fileType conformsToType:UTTypeWebArchive]) {
             backend = appine_create_web_backend(panel.URL.absoluteString);
+        } 
+        // Quick Look 智能路由 (白名单 + 严格黑名单)
+        else {
+            BOOL isSafeForQuickLook = NO;
+            
+            if (fileType != nil) {
+                // 【白名单】允许的大类：内容（文档/图片/音视频）、文本、源代码、脚本等
+                NSArray<UTType *> *safeTypes = @[
+                    UTTypeContent,      // 涵盖了 Office, iWork, 图片, 音视频
+                    UTTypeText,         // 涵盖纯文本
+                    UTTypeSourceCode,   // 涵盖各种编程语言源码
+                    UTTypeScript,       // 涵盖脚本 (sh, py, js 等)
+                    UTTypeLog,          // 日志文件
+                    UTTypeJSON,
+                    UTTypeXML
+                ];
+                
+                for (UTType *safeType in safeTypes) {
+                    if ([fileType conformsToType:safeType]) {
+                        isSafeForQuickLook = YES;
+                        break;
+                    }
+                }
+                
+                // 【黑名单】拦截危险类型（防止某些类型多重继承导致误判）
+                if ([fileType conformsToType:UTTypeExecutable] ||  // 拦截 exe, dylib, so, dll, mach-o
+                    [fileType conformsToType:UTTypeArchive] ||     // 拦截 zip, rar, tar, 7z
+                    [fileType conformsToType:UTTypeDiskImage] ||   // 拦截 dmg, iso
+                    [fileType conformsToType:UTTypeApplication] || // 拦截 app
+                    [fileType conformsToType:UTTypePluginBundle] ||// 拦截 plugin
+                    [fileType conformsToType:UTTypeFramework] ||   // 拦截 framework
+                    [fileType conformsToType:UTTypeFolder]) {      // 拦截 文件夹
+                    
+                    isSafeForQuickLook = NO;
+                }
+            }
+            
+            if (isSafeForQuickLook) {
+                backend = appine_create_quicklook_backend(path);
+            } else {
+                NSString *ext = path.pathExtension.length > 0 ? path.pathExtension : @"无后缀/未知";
+                NSLog(@"[Appine] 拦截了不支持或可能导致崩溃的文件类型: %@", ext);
+                
+                NSAlert *alert = [[NSAlert alloc] init];
+                alert.messageText = @"不支持预览该文件";
+                alert.informativeText = [NSString stringWithFormat:@"Appine 无法安全地预览此类型的文件 (%@)。\n为防止底层渲染服务崩溃，已拦截此操作。", ext];
+                [alert runModal];
+                return;
+            }
         }
-        appine_add_tab(backend);
+        
+        if (backend) {
+            appine_add_tab(backend);
+        }
     }
 }
-
 - (void)undo:(id)sender { (void)sender; [self focusAndSendAction:@selector(undo:)]; }
 - (void)cut:(id)sender { (void)sender; [self focusAndSendAction:@selector(cut:)]; }
 - (void)copy:(id)sender { (void)sender; [self focusAndSendAction:@selector(copy:)]; }
@@ -361,6 +418,10 @@ static void appine_ensure_container(void) {
     
     state.tabBarView = [[NSView alloc] init];
     state.tabControl = [NSSegmentedControl segmentedControlWithLabels:@[] trackingMode:NSSegmentSwitchTrackingSelectOne target:g_action_target action:@selector(tabChanged:)];
+    // 等宽分布
+    if (@available(macOS 10.13, *)) {
+        state.tabControl.segmentDistribution = NSSegmentDistributionFillEqually;
+    }
     [state.tabBarView addSubview:state.tabControl];
     [state.containerView addSubview:state.tabBarView];
     
@@ -417,7 +478,6 @@ static void appine_apply_visual_state(void) {
         }
     }
 }
-
 static void appine_rebuild_tabs(void) {
     AppineState *state = appine_state();
     if (!state.tabControl) return;
@@ -427,7 +487,15 @@ static void appine_rebuild_tabs(void) {
     
     for (NSInteger i = 0; i < (NSInteger)state.tabs.count; i++) {
         AppineTabItem *item = state.tabs[i];
-        [state.tabControl setLabel:(item.backend.title ?: @"Tab") forSegment:i];
+        
+        // 获取标题并进行硬性长度截断（防止单个 Tab 时标题过长）
+        NSString *title = item.backend.title ?: @"Tab";
+        const NSUInteger kMaxTitleLength = 30;
+        if (title.length > kMaxTitleLength) {
+            title = [[title substringToIndex:kMaxTitleLength - 1] stringByAppendingString:@"…"];
+        }
+        
+        [state.tabControl setLabel:title forSegment:i];
         if (item.tabId == state.activeTabId) selectedIdx = i;
     }
     

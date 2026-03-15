@@ -28,17 +28,28 @@
 - **激活状态**：点击嵌入的 App 可以进入到嵌入 App 的激活状态。当激活的时候可以像 Mac 原生 App 那样使用。此时 Emacs 被锁定。
 - **非激活状态**：当鼠标点击其他 Emacs 的 buffer 的时候，嵌入的 App 会被锁定且变灰，无法使用。此时可以正常地使用 Emacs。如果原生视图当前拥有焦点，你可以点击 **Deactivate** 按钮（或使用配置的快捷键）安全地将焦点交还给 Emacs，并将视图拆分为并排布局。
 
-TODO： 一段演示两种状态的视频地址
+一段演示两种状态的视频地址:
+
+https://github.com/user-attachments/assets/a7eaf65a-da9b-45ee-9b24-ca835379fc34
+
+deactivate:
+
+https://github.com/user-attachments/assets/986af882-56e5-4ce4-b66d-1acde987c9ed
+
 
 ### 打开网页 (Open a Web Page)
 运行 `M-x appine-open-web-split`。系统会提示你输入一个 URL。一个原生的 WebKit 视图将在当前的 Emacs 窗口中打开。一段演示视频如下：
 
-TODO: 一段 Open Web Page 的视频地址
+一段 Open Web Page 的视频地址
+
+https://github.com/user-attachments/assets/f63eff4e-754e-4d4f-b11c-aa9d3f982c67
 
 ### 打开 PDF 文档 (Open a PDF Document)
 运行 `M-x appine-open-pdf-split`。选择一个 PDF 文件，它将使用 macOS PDFKit 进行渲染。
 
-TODO: 一段打开 PDF 的视频地址
+一段打开 PDF 的视频地址
+
+https://github.com/user-attachments/assets/fd33d767-37dd-4027-adae-823b32228c7e
 
 ### 工具栏 (Toolbar)
 

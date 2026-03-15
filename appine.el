@@ -5,7 +5,7 @@
 ;; Author: Huang Chao <huangchao.cpp@gmail.com>
 ;; Copyright (C) 2026, Huang Chao, all rights reserved.
 ;; Created: 2026-03-15 19:35:21
-;; Version: 0.0.2
+;; Version: 0.0.3
 ;; Package-Requires: ((emacs "29.1"))
 ;; URL: https://github.com/chaoswork/appine
 ;; Keywords: tools, multimedia, convenience, macos
@@ -57,7 +57,7 @@
 (require 'url)
 
 (defconst appine-github-repo "chaoswork/appine")
-(defconst appine-version "0.0.2") ;; 记得打 tag 以使用 github action
+(defconst appine-version "0.0.3") ;; 记得打 tag 以使用 github action
 
 
 ;; 加载模块
@@ -83,7 +83,8 @@
 (defun appine--compile-module ()
   "本地执行 make 编译动态模块。"
   (message "[Appine] 开始在本地编译模块...")
-  (let* ((dir (file-name-directory (or load-file-name buffer-file-name)))
+  (let* ((current-file (file-truename (or load-file-name buffer-file-name)))
+         (dir (file-name-directory current-file))
          (default-directory dir)
          (exit-code (call-process "make" nil "*appine-compile*" t)))
     (if (= exit-code 0)
@@ -126,7 +127,9 @@
 
 (defun appine-ensure-module ()
   "确保动态模块存在。如果不存在，询问是否下载预编译版本，选择是则尝试下载，否则直接本地编译。"
-  (let* ((dir (file-name-directory (or load-file-name buffer-file-name)))
+  ;; 使用 file-truename 解析软链接的真实路径
+  (let* ((current-file (file-truename (or load-file-name buffer-file-name)))
+         (dir (file-name-directory current-file))
          (module-file (expand-file-name "appine-module.dylib" dir))
          (download-url (format "https://github.com/%s/releases/download/v%s/appine-module.dylib"
                                appine-github-repo appine-version)))

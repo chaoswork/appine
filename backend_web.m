@@ -155,14 +155,52 @@
 - (void)reload:(id)sender { [self.webView reload]; }
 
 - (void)urlEntered:(NSTextField *)sender {
-    NSString *urlStr = sender.stringValue;
-    if (![urlStr hasPrefix:@"http://"] && ![urlStr hasPrefix:@"https://"] && ![urlStr hasPrefix:@"file://"]) {
-        urlStr = [@"https://" stringByAppendingString:urlStr];
+    // 去除首尾的空白字符
+    NSString *input = [sender.stringValue stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if (input.length == 0) return;
+
+    BOOL isSearch = NO;
+
+    // 1. 如果包含空格，直接认为是搜索
+    if ([input rangeOfString:@" "].location != NSNotFound) {
+        isSearch = YES;
     }
-    NSURL *url = [NSURL URLWithString:urlStr];
+    // 2. 如果不包含 "."，且不是 localhost，也不是本地文件协议，通常也是搜索词 (例如直接输入 "emacs")
+    else if ([input rangeOfString:@"."].location == NSNotFound &&
+               ![input isEqualToString:@"localhost"] &&
+               ![input hasPrefix:@"http://localhost"] &&
+               ![input hasPrefix:@"https://localhost"] &&
+               ![input hasPrefix:@"file://"]) {
+        isSearch = YES;
+    }
+
+    NSURL *url = nil;
+
+    if (isSearch) {
+        // 构建 Google 搜索 URL，并对搜索词进行 URLEncode
+        NSString *encodedQuery = [input stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLQueryAllowedCharacterSet]];
+        NSString *searchUrlStr = [NSString stringWithFormat:@"https://www.google.com/search?q=%@", encodedQuery];
+        url = [NSURL URLWithString:searchUrlStr];
+    } else {
+        NSString *urlStr = input;
+        // 自动补全协议头
+        if (![urlStr hasPrefix:@"http://"] && ![urlStr hasPrefix:@"https://"] && ![urlStr hasPrefix:@"file://"]) {
+            urlStr = [@"https://" stringByAppendingString:urlStr];
+        }
+        url = [NSURL URLWithString:urlStr];
+
+        // 3. 如果 NSURL 解析失败（例如包含未转义的特殊字符），降级为搜索
+        if (!url) {
+            NSString *encodedQuery = [input stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLQueryAllowedCharacterSet]];
+            NSString *searchUrlStr = [NSString stringWithFormat:@"https://www.google.com/search?q=%@", encodedQuery];
+            url = [NSURL URLWithString:searchUrlStr];
+        }
+    }
+
     if (url) {
         [self.webView loadRequest:[NSURLRequest requestWithURL:url]];
     }
+
     // 提交后将焦点还给 WebView
     [self.containerView.window makeFirstResponder:self.webView];
 }

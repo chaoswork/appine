@@ -28,22 +28,36 @@ The embedded App has two states: Active and Inactive.
 - **Active State**: Click the embedded App to enter the active state. When active, it can be used just like a native Mac App. Emacs is locked during this time.
 - **Inactive State**: When you click on other Emacs buffers, the embedded App is locked, grayed out, and cannot be interacted with. You can use Emacs normally at this time. If the native view has focus, you can click the **Deactivate** button (or use a configured shortcut) to safely return focus to Emacs and split the view into a side-by-side layout.
 
-TODO: A video demonstrating the two states.
+A video demonstrating the two states.
+
+https://github.com/user-attachments/assets/a7eaf65a-da9b-45ee-9b24-ca835379fc34
+
+deactivate:
+
+https://github.com/user-attachments/assets/986af882-56e5-4ce4-b66d-1acde987c9ed
 
 ### Open a Web Page
 Run `M-x appine-open-web-split`. You will be prompted to enter a URL. A native WebKit view will open in the current Emacs window. A demonstration video is as follows:
 
-TODO: A video demonstrating Open Web Page.
+A video demonstrating Open Web Page.
+
+https://github.com/user-attachments/assets/f63eff4e-754e-4d4f-b11c-aa9d3f982c67
 
 ### Open a PDF Document
 Run `M-x appine-open-pdf-split`. Select a PDF file, and it will be rendered using macOS PDFKit.
 
-TODO: A video demonstrating Open PDF.
+A video demonstrating Open PDF.
+
+https://github.com/user-attachments/assets/f2dd6c5a-eabb-421b-8d2c-986540f230f6
 
 ### Toolbar
 
 The Toolbar implements common App operations such as New Tab, Open File, etc., and also includes editing operations like Cut/Copy/Paste. 
 Since Appine introduces the macOS Quick Look Preview module, most common files can be previewed. You can open files through the Open File button in the Appine window.
+
+Copy/Paste video
+
+https://github.com/user-attachments/assets/fd33d767-37dd-4027-adae-823b32228c7e
 
 ### Window Management
 The native view is tied to an Emacs buffer (e.g., `*Appine*`). You can split windows (`C-x 3`, `C-x 2`), resize them, or switch buffers. The native view will automatically track the Emacs window's geometry.
