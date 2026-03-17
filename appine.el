@@ -375,6 +375,7 @@
     (appine-native-action "open-file")
     (appine--set-active t)))
 
+;;;###autoload
 (defun appine-open-web-split (url)
   "Split window on the right and open URL in a new embedded native web tab."
   (interactive "sURL: ")
@@ -390,6 +391,7 @@
     (appine--set-active t)))
 
 ;; TODO: combine appine-open-file-split, appine-open-pdf-split to one func
+;;;###autoload
 (defun appine-open-file-split (path)
   "Split window on the right and open PATH in a new embedded native Quicklook tab."
   (interactive "fFile: ")
