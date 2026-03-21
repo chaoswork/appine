@@ -2,7 +2,7 @@
 
 **Appine** (App in Emacs) allows you to embed native macOS views directly inside Emacs windows.
 
-When Appine starts, it opens an embedded Appine Window tied to an \*Appine Window\* buffer. You can maximize it with `C-x 1`, close it with `C-x 0`, and switch between buffers with `C-x o`. You can also scroll through the embedded Appine Window using `C-n`, `C-p`, `C-v`, `M-v`, `M-<`, and `M->`, just as you would in an Emacs buffer.
+When Appine starts, it opens an embedded Appine Window tied to an \*Appine Window\* buffer. You can maximize it with `C-x 1`, close it with `C-x 0`, switch between buffers with `C-x o`. If you close it, you can reopen it with `C-x b` by switching to the *Appine Window* buffer. You can also scroll through the embedded Appine Window using `C-n`, `C-p`, `C-v`, `M-v`, `M-<`, and `M->`, just as you would in an Emacs buffer.
 
 ## Commands (M-x)
 
@@ -12,6 +12,7 @@ When Appine starts, it opens an embedded Appine Window tied to an \*Appine Windo
 - `appine-next-tab` / `appine-prev-tab`: Switch between tabs.
 - `appine-close-tab`: Close the current tab.
 - `appine-close`: Close Appine. This only closes the embedded view; the \*Appine Buffer\* remains in the background. You can reopen the \*Appine Buffer\* at any time to restore the view.
+- `appine-kill`: kill the Appine window completely.
 
 ## Shortcuts (When Focused)
 

@@ -492,6 +492,9 @@ static void appine_setup_global_event_monitor(void) {
             APPINE_LOG(@"envet.type: %lu, NSEventTypeKeyDown: %lu", event.type, NSEventTypeKeyDown);
             if (event.type == NSEventTypeKeyDown) {
                 AppineState *state = appine_state();
+                if (!state.containerView || !state.isActive || !state.hostWindow) {
+                    return event;
+                }                
                 if (state.isActive && state.hostWindow && state.hostWindow.firstResponder) {
                     NSResponder *responder = state.hostWindow.firstResponder;
                     BOOL isAppineFocused = NO;
@@ -631,6 +634,7 @@ static void appine_ensure_container(void) {
     NSWindow *win = appine_target_window();
     if (!win) return;
 
+    state.isActive = NO;
     state.hostWindow = win;
     g_action_target = [[AppineActionTarget alloc] init];
 
@@ -970,10 +974,36 @@ int appine_core_perform_action(const char *action_name) {
 int appine_core_close(void) {
     dispatch_async(dispatch_get_main_queue(), ^{
         AppineState *state = appine_state();
+
+        // 1. 先把焦点还给 Emacs
+        if (state.hostWindow) {
+            NSView *emacsView = appine_get_emacs_view();
+            if (emacsView) {
+                [state.hostWindow makeFirstResponder:emacsView];
+            }
+        }
+
+        // 2. 重置所有状态
+        state.isActive = NO;
+
+        // 3. 移除视图
         [state.containerView removeFromSuperview];
         state.containerView = nil;
+        state.toolbarView = nil;
+        state.toolbarStack = nil;
+        state.tabBarView = nil;
+        state.tabControl = nil;
+        state.contentHostView = nil;
+        state.inactiveOverlayView = nil;
+
+        // 4. 清空 tabs
         [state.tabs removeAllObjects];
         state.activeTabId = -1;
+
+        // 5. 解除 hostWindow 引用
+        state.hostWindow = nil;
+
+        APPINE_LOG(@"appine_core_close: all state reset, container removed.");
     });
     return 0;
 }

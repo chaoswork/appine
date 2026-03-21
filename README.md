@@ -13,7 +13,7 @@ You can open a browser, read PDFs, listen to music, and watch videos in Emacs. E
 
 ## ✨ Features
 
-- **Use It Like an Emacs Buffer**: When Appine starts, it opens an embedded Appine Window tied to an \*Appine Window\* buffer. You can maximize it with `C-x 1`, close it with `C-x 0`, and switch between buffers with `C-x o`. You can also scroll through the embedded Appine Window using `C-n`, `C-p`, `C-v`, `M-v`, `M-<`, and `M->`, just as you would in an Emacs buffer.
+- **Use It Like an Emacs Buffer**: When Appine starts, it opens an embedded Appine Window tied to an \*Appine Window\* buffer. You can maximize it with `C-x 1`, close it with `C-x 0`, and switch between buffers with `C-x o`. If you close it, you can reopen it with `C-x b` by switching to the *Appine Window* buffer. You can also scroll through the embedded Appine Window using `C-n`, `C-p`, `C-v`, `M-v`, `M-<`, and `M->`, just as you would in an Emacs buffer.
 - **Native Web Browsing**: Embed a fully functional Safari-like WebKit view inside an Emacs window, with full support for cookies.
 - **Native PDF Rendering**: View PDFs with macOS's built-in PDFKit for buttery-smooth scrolling and zooming, and easily copy content from it to other Emacs buffers.
 - **Native Word/Excel Rendering**: View Word/Excel files with macOS's built-in Quartz for buttery-smooth scrolling and zooming. Unfortunately, you cannot edit them yet.
@@ -24,21 +24,26 @@ You can open a browser, read PDFs, listen to music, and watch videos in Emacs. E
 
 ## 📖 Usage
 
+### Open Appine
+
+Run `M-x appine` to open the Appine Window. If you open it for the first time, the Appine Window will show **a brief usage**.
+
+You can close it with `M-x appine-close` or simply `C-x 0`. If you want to open the Appine window again, run `M-x appine` or just open the \*Appine Window\* buffer.
+
+You can kill the Appine window completely with `M-x appine-kill`.
+
 ### Two States of Embedded Apps
 
 The embedded App has two states: Active and Inactive.
-- **Active State**: Click the embedded App to enter the active state. When active, it can be used just like a native Mac App. Emacs is locked during this time.
-- **Inactive State**: When you click on other Emacs buffers, the embedded App is locked, grayed out, and cannot be interacted with. You can use Emacs normally at this time. If the native view has focus, you can click the **Deactivate** button (or use a configured shortcut) to safely return focus to Emacs and split the view into a side-by-side layout.
+- **Active State**: When the \*Appine Window\* buffer is active, it can be used just like a native Mac App. 
+- **Inactive State**: When the \*Appine Window\* buffer is not active, the embedded App is locked, grayed out, and cannot be interacted with. You can use Emacs normally at this time. 
 
 A video demonstrating the two states.
 
 https://github.com/user-attachments/assets/a7eaf65a-da9b-45ee-9b24-ca835379fc34
 
-deactivate:
-
-https://github.com/user-attachments/assets/986af882-56e5-4ce4-b66d-1acde987c9ed
-
 ### Open a Web Page
+
 Run `M-x appine-open-url`. You will be prompted to enter a URL. A native WebKit view will open in the current Emacs window. A demonstration video is as follows:
 
 A video demonstrating Open Web Page.
@@ -46,7 +51,10 @@ A video demonstrating Open Web Page.
 https://github.com/user-attachments/assets/f63eff4e-754e-4d4f-b11c-aa9d3f982c67
 
 ### Opening PDFs and Other Documents
+
 Run `M-x appine-open-file`. If you select a PDF file, it will be rendered using macOS PDFKit. Other files will be previewed using Quick Look.
+
+When you forced on the Appine window, you can typing `C-x C-f` to open file in the macOS file chooser. 
 
 A video demonstrating Open PDF.
 
@@ -68,6 +76,7 @@ Copy/Paste video
 https://github.com/user-attachments/assets/fd33d767-37dd-4027-adae-823b32228c7e
 
 ### Window Management
+
 The native view is tied to an Emacs buffer (named `*Appine-Window*`). You can split windows (`C-x 3`, `C-x 2`), resize them, or switch buffers. The native view will automatically track the Emacs window's geometry.
 
 ## 📦 Requirements

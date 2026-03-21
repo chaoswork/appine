@@ -23,22 +23,27 @@
 
 ## 📖 使用方法 (Usage)
 
+### 打开 Appine
+
+使用 `M-x appine` 打开 Appine Window. 如果是第一次打开，会显示一个简单的使用说明。
+
+你可以用 `M-x appine-close` 或者 `C-x 0` 来关闭窗口。如果你想重新打开，可以使用 `M-x appine`, 其实只需要把 \*Appine Window\* 打开即可。
+
+使用 `M-x appine-kill` 会彻底关掉嵌入的 Appine Window。
+
 ### 嵌入 App 的两种状态
 
 嵌入的 App 有两种状态：激活和未激活。
-- **激活状态**：点击嵌入的 App 可以进入到嵌入 App 的激活状态。当激活的时候可以像 Mac 原生 App 那样使用。此时 Emacs 被锁定。
-- **非激活状态**：当鼠标点击其他 Emacs 的 buffer 的时候，嵌入的 App 会被锁定且变灰，无法使用。此时可以正常地使用 Emacs。如果原生视图当前拥有焦点，你可以点击 **Deactivate** 按钮（或使用配置的快捷键）安全地将焦点交还给 Emacs，并将视图拆分为并排布局。
+- **激活状态**：当 \*Appine Window\* Buffer 被激活时，可以像 Mac 原生 App 那样使用。
+- **非激活状态**：当 \*Appine Window\* 未被激活时，嵌入的 App 会被锁定且变灰，无法使用。此时可以正常地使用 Emacs。
 
 一段演示两种状态的视频地址:
 
 https://github.com/user-attachments/assets/a7eaf65a-da9b-45ee-9b24-ca835379fc34
 
-deactivate:
-
-https://github.com/user-attachments/assets/986af882-56e5-4ce4-b66d-1acde987c9ed
-
 
 ### 打开网页 (Open a Web Page)
+
 运行 `M-x appine-open-url`。系统会提示你输入一个 URL。一个原生的 WebKit 视图将在当前的 Emacs 窗口中打开。一段演示视频如下：
 
 一段 Open Web Page 的视频地址
@@ -68,6 +73,7 @@ Toolbar 实现了一些 App 的常用操作，比如新建标签页 (New Tab)、
 https://github.com/user-attachments/assets/fd33d767-37dd-4027-adae-823b32228c7e
 
 ### 窗口管理 (Window Management)
+
 原生视图与 Emacs buffer（名为 `*Appine-Window*`）绑定。你可以分割窗口（`C-x 3`，`C-x 2`），调整它们的大小，或者切换 buffers。原生视图会自动跟踪 Emacs 窗口的几何形状。
 
 ## 📦 环境要求 (Requirements)

@@ -292,7 +292,6 @@ default is nil, If non-nil, window becomes dedicated only when Appine is active.
 If it is less than 1.0, the Appine window will become smaller."
   :type 'number)
 
-(defvar appine--window nil)
 (defvar appine--buffer-name "*Appine Window*")
 (defvar appine--active nil)
 (defvar appine--active-map-enabled nil)
@@ -345,48 +344,44 @@ If it is less than 1.0, the Appine window will become smaller."
 (defun appine--buffer ()
   (get-buffer-create appine--buffer-name))
 
-(defun appine--window-live-p ()
-  (and appine--window (window-live-p appine--window)))
+(defun appine--should-be-active-p ()
+  "判断当前 Appine 是否应该处于激活（接管焦点）状态。
+条件：当前选中的窗口正在显示 Appine 的 Buffer。"
+  (and (get-buffer appine--buffer-name)
+       (eq (current-buffer) (get-buffer appine--buffer-name))))
 
 (defun appine--update-active-keymap ()
   (setq appine--active-map-enabled
         (and appine--active
-             (appine--window-live-p)
-             (eq (selected-window) appine--window))))
+             (appine--should-be-active-p))))
 
 (defun appine--ensure-window ()
-  (unless (appine--window-live-p)
-    (let* ((base (selected-window))
-           (new (split-window base nil 'right)))
-      (setq appine--window new)
-      (set-window-buffer new (appine--buffer))
-      
-      ;;将这个窗口标记为专用，并禁止 Emacs 自动把其他 buffer 塞进来
-      ;; (set-window-dedicated-p new t)
-      ;; 不要永久 dedicated；由 appine--set-active 动态控制
-      (set-window-dedicated-p new nil)      
-      ;; 之前测试用，记得把下面的一行删掉，不然 C-x o 无法正常工作
-      ;; (set-window-parameter new 'no-other-window t)
-      
-      (with-current-buffer (appine--buffer)
-        (setq-local mode-line-format nil)
-        (setq-local header-line-format nil)
-        (setq-local cursor-type nil)
-        (setq buffer-read-only t)
-        (let ((inhibit-read-only t))
-          (erase-buffer)
-          (insert "\nThis is the *Appine Window* buffer.\n")
-          (insert "\nIf you can see this message, Emacs is currently displaying at least two *Appine Window* buffers.\n")
-          (insert "\nThe embedded macOS view of Appine can only be attached to the active *Appine Window* buffer.\n")
-          (insert "\nYou can press `C-x 1` to close this buffer.\n")))
+  "确保 Appine Buffer 有一个可见的窗口，如果没有则向右分屏创建。"
+  (let ((win (appine--get-active-window-for-buffer appine--buffer-name)))
+    (unless win
+      (let* ((base (selected-window))
+             (new (split-window base nil 'right)))
+        (setq win new)
+        (set-window-buffer new (appine--buffer))
+        (set-window-dedicated-p new nil)      
+        
+        (with-current-buffer (appine--buffer)
+          (setq-local mode-line-format nil)
+          (setq-local header-line-format nil)
+          (setq-local cursor-type nil)
+          (setq buffer-read-only t)
+          (let ((inhibit-read-only t))
+            (erase-buffer)
+            (insert "\nThis is the *Appine Window* buffer.\n")
+            (insert "\nIf you can see this message, Emacs is currently displaying at least two *Appine Window* buffers.\n")
+            (insert "\nThe embedded macOS view of Appine can only be attached to the active *Appine Window* buffer.\n")
+            (insert "\nYou can press `C-x 1` to close this buffer.\n")))
 
-      (let* ((total (window-total-width base))
-             (target (max 20 (floor (* total appine-window-size)))))
-        (ignore-errors
-          (window-resize new (- target (window-total-width new)) t)))
-
-      new))
-  appine--window)
+        (let* ((total (window-total-width base))
+               (target (max 20 (floor (* total appine-window-size)))))
+          (ignore-errors
+            (window-resize new (- target (window-total-width new)) t)))))
+    win))
 
 (defun appine--window-pixel-rect (win)
   (let* ((edges (window-inside-pixel-edges win))
@@ -402,55 +397,53 @@ If it is less than 1.0, the Appine window will become smaller."
     (list x y w h)))
 
 (defun appine--rect ()
-  (appine--window-pixel-rect (appine--ensure-window)))
+  (let ((win (or (appine--get-active-window-for-buffer appine--buffer-name)
+                 (appine--ensure-window))))
+    (appine--window-pixel-rect win)))
 
 (defun appine--set-active (flag)
   (unless (eq appine--active flag)
     (setq appine--active flag)
-    ;; 失活时一定解除 dedicated，避免影响 C-x ? 等改变窗口的操作
-    (when (appine--window-live-p)
-      (set-window-dedicated-p
-       appine--window
-       (and flag appine-dedicated-window)))    
+    (let ((win (appine--get-active-window-for-buffer appine--buffer-name)))
+      ;; 失活时一定解除 dedicated，避免影响 C-x ? 等改变窗口的操作
+      (when (window-live-p win)
+        (set-window-dedicated-p win (and flag appine-dedicated-window))))
     (appine--update-active-keymap)
     (when (featurep 'appine-module)
       (ignore-errors
         (appine-native-set-active (if flag 1 0))))))
 
-(defun appine--sync-active-state ()
-  (when (appine--window-live-p)
-    (appine--set-active (eq (selected-window) appine--window)))
-  (unless (appine--window-live-p)
-    (setq appine--active nil)
-    (appine--update-active-keymap))
-    ;; (message "appine--active: %s, appine--active-map-enabled: %s" appine--active appine--active-map-enabled)
-  )
+(defun appine--sync-active-state (&rest _args)
+  "同步 Appine 的激活状态。"
+  (appine--set-active (appine--should-be-active-p)))
 
 (defun appine-refresh ()
   "Refresh embedded native view position."
   (interactive)
-  (when (appine--window-live-p)
-    (pcase-let* ((`(,x ,y ,w ,h) (appine--window-pixel-rect appine--window)))
-      (appine-native-move-resize x y w h))))
+  (let ((win (appine--get-active-window-for-buffer appine--buffer-name)))
+    (when win
+      (pcase-let* ((`(,x ,y ,w ,h) (appine--window-pixel-rect win)))
+        (appine-native-move-resize x y w h)))))
 
 (defun appine-focus ()
   "Activate appine native interaction."
   (interactive)
-  (when (appine--window-live-p)
-    (select-window appine--window)
-    (appine--set-active t)
-    (appine-native-focus)))
+  (let ((win (appine--get-active-window-for-buffer appine--buffer-name)))
+    (when win
+      (select-window win)
+      (appine--set-active t)
+      (appine-native-focus))))
 
 (defun appine-unfocus ()
   "Deactivate appine native interaction."
   (interactive)
-  (when (appine--window-live-p)
+  (when (appine--get-active-window-for-buffer appine--buffer-name)
     (appine--set-active nil)
     (appine-native-unfocus)))
 
 (defun appine-native-action (name)
   "Perform native appine action NAME."
-  (when (appine--window-live-p)
+  (when (appine--get-active-window-for-buffer appine--buffer-name)
     (appine-native-focus)
     (appine-native-perform-action name)))
 
@@ -490,7 +483,7 @@ If it is less than 1.0, the Appine window will become smaller."
 (defun appine-new-tab ()
   "Open a new default web tab in appine."
   (interactive)
-  (when (appine--window-live-p)
+  (when (appine--get-active-window-for-buffer appine--buffer-name)
     (appine-native-action "newTab")
     (appine--set-active t)))
 
@@ -498,10 +491,30 @@ If it is less than 1.0, the Appine window will become smaller."
   "This function can only be used when the Appine window is active!
 Open a file chooser in appine."
   (interactive)
-  (when (appine--window-live-p)
+  (when (appine--get-active-window-for-buffer appine--buffer-name)
     (appine-native-action "openFile")
     (appine--set-active t)))
-;; (put 'appine-core-open-file 'completion-predicate #'ignore)
+
+(defun appine-close-tab ()
+  "Close current embedded native tab."
+  (interactive)
+  (when (appine--get-active-window-for-buffer appine--buffer-name)
+    (appine-native-close-active-tab)
+    (appine-refresh)))
+
+(defun appine-next-tab ()
+  "Select next embedded native tab."
+  (interactive)
+  (when (appine--get-active-window-for-buffer appine--buffer-name)
+    (appine-native-select-next-tab)
+    (appine-refresh)))
+
+(defun appine-prev-tab ()
+  "Select previous embedded native tab."
+  (interactive)
+  (when (appine--get-active-window-for-buffer appine--buffer-name)
+    (appine-native-select-prev-tab)
+    (appine-refresh)))
 
 (defun appine-web-go-forward ()
   "Go forward in Appine Web Backend."
@@ -526,36 +539,25 @@ a right-hand split window; otherwise, split the window
 on the right and open the default usage.html help page."
   (interactive)
   (let* ((buf-exists (get-buffer appine--buffer-name))
-         ;; 获取当前插件所在的目录
          (usage-file (expand-file-name "docs/usage.html" appine-root-dir)))
-    ;; (message "usage-file: %s" usage-file)
-
     (if buf-exists
-        ;; 如果 buffer 已经存在，确保窗口在右侧打开，并激活焦点
-        (progn
-          (appine--ensure-window)
-          (select-window appine--window)
+        (let ((win (appine--ensure-window)))
+          (select-window win)
           (appine--set-active t))
-
-      ;; 如果 buffer 不存在，先检查 usage.html 是否存在，不存在则自动生成
-      ;; (unless (file-exists-p usage-file)
-      ;;   (appine--create-usage-html usage-file))
-      ;; 在右侧打开 usage.html
       (appine-open-file usage-file))))
 
 ;;;###autoload
 (defun appine-open-url (url)
   "Split window on the right and open URL in a new embedded native web tab."
   (interactive "sURL: ")
-  ;; 检查并自动补全 https:// 前缀 (忽略大小写)
   (unless (or (string-prefix-p "http://" url t)
               (string-prefix-p "https://" url t))
     (setq url (concat "https://" url)))
   
   (pcase-let* ((`(,x ,y ,w ,h) (appine--rect)))
     (appine-native-open-web-in-rect url x y w h)
-    ;; 强制将 Emacs 的光标焦点移动到 appine 窗口
-    (select-window appine--window)
+    (let ((win (appine--get-active-window-for-buffer appine--buffer-name)))
+      (when win (select-window win)))
     (appine--set-active t)))
 
 ;;;###autoload
@@ -564,40 +566,42 @@ on the right and open the default usage.html help page."
   (interactive "fFile: ")
   (pcase-let* ((`(,x ,y ,w ,h) (appine--rect)))
     (appine-native-open-file-in-rect (expand-file-name path) x y w h)
-    ;; 强制将 Emacs 的光标焦点移动到 appine 窗口
-    (select-window appine--window)
+    (let ((win (appine--get-active-window-for-buffer appine--buffer-name)))
+      (when win (select-window win)))
     (appine--set-active t)))
-
-(defun appine-close-tab ()
-  "Close current embedded native tab."
-  (interactive)
-  (when (appine--window-live-p)
-    (appine-native-close-active-tab)
-    (appine-refresh)))
-
-(defun appine-next-tab ()
-  "Select next embedded native tab."
-  (interactive)
-  (when (appine--window-live-p)
-    (appine-native-select-next-tab)
-    (appine-refresh)))
-
-(defun appine-prev-tab ()
-  "Select previous embedded native tab."
-  (interactive)
-  (when (appine--window-live-p)
-    (appine-native-select-prev-tab)
-    (appine-refresh)))
 
 (defun appine-close ()
   "Close all embedded native views and delete host window when possible."
   (interactive)
-  (delete-window appine--window))
+  (let ((win (appine--get-active-window-for-buffer appine--buffer-name)))
+    (when win (delete-window win))))
+
+(defun appine-kill ()
+  "Close all embedded native views and delete host window when possible."
+  (interactive)
+  (let ((win (appine--get-active-window-for-buffer appine--buffer-name)))
+    (when win (set-window-dedicated-p win nil))
+    
+    (appine--set-active nil)
+    (when (featurep 'appine-module)
+      (ignore-errors (appine-native-unfocus))
+      (ignore-errors (appine-native-close)))
+    
+    (setq appine--active nil)
+    (setq appine--active-map-enabled nil)
+    
+    (when (get-buffer appine--buffer-name)
+      (kill-buffer appine--buffer-name))
+    
+    (when (and win (window-live-p win))
+      (ignore-errors (delete-window win)))
+    
+    (appine--update-active-keymap)))
 
 (add-hook 'window-size-change-functions
           (lambda (_frame)
             (when (and (featurep 'appine-module)
-                       (appine--window-live-p))
+                       (appine--get-active-window-for-buffer appine--buffer-name))
               (ignore-errors
                 (appine-refresh)))))
 
@@ -612,24 +616,25 @@ on the right and open the default usage.html help page."
 (defun appine--update-visibility (&rest _args)
   "Check if *appine* buffer is visible and update native view accordingly."
   (when (featurep 'appine-module)
-    ;; 不再使用简单的 get-buffer-window，而是使用智能获取函数
     (let ((win (appine--get-active-window-for-buffer appine--buffer-name)))
       (if win
           (progn
-            ;; 如果可见，绑定新窗口并拽回原生视图
-            (setq appine--window win)
             (ignore-errors (appine-refresh))
             (ignore-errors (appine--sync-active-state)))
-        ;; Trick: 如果不可见，解绑窗口并把原生视图移到屏幕外
-        ;; 注意：这里保留 100x100 的大小而不是 0x0，防止 macOS 彻底挂起 WebView 的渲染进程
-        ;; 避免旧 window 残留 dedicated
-        (when (window-live-p appine--window)
-          (set-window-dedicated-p appine--window nil))        
-        (setq appine--window nil)
-        (setq appine--active nil)
-        (appine--update-active-keymap)
+        ;; 如果不可见，把原生视图移到屏幕外，并彻底释放焦点
+        (appine--set-active nil)
         (ignore-errors
           (appine-native-move-resize -9999 -9999 100 100))))))
+
+(defun appine--post-command-focus-restore ()
+  "在 Emacs 执行完命令后，如果用户依然停留在 Appine Buffer，则强制抢回焦点。"
+  (when (and appine--active
+             (appine--should-be-active-p)
+             (featurep 'appine-module))
+    (ignore-errors (appine-native-focus))))
+
+;; 将焦点恢复逻辑挂载到 post-command-hook
+(add-hook 'post-command-hook #'appine--post-command-focus-restore)
 
 ;; 监听窗口布局的变化 (例如 C-x 1, C-x 3, 拖拽边缘)
 (add-hook 'window-configuration-change-hook #'appine--update-visibility)
@@ -644,7 +649,7 @@ on the right and open the default usage.html help page."
 (add-hook 'buffer-list-update-hook
           (lambda ()
             (when (and (featurep 'appine-module)
-                       (appine--window-live-p))
+                       (appine--get-active-window-for-buffer appine--buffer-name))
               (ignore-errors
                 (appine--sync-active-state)))))
 
