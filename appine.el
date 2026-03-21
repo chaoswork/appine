@@ -183,6 +183,7 @@
               ;; 6. 用户选是：执行 git pull 并重新加载
               (progn
                 (message "[Appine] prepare update...")
+
                 (let ((default-directory appine-root-dir))
                   ;; 先执行 git stash 暂存本地可能存在的修改
                   (message "[Appine] stash local modify (git stash)...")
@@ -203,7 +204,9 @@
                         ;; 2. 重新加载新版本的 appine.el
                         (message "[Appine] reload appine.el ...")
                         (load-file (expand-file-name "appine.el" appine-root-dir))
-                        
+                        ;; 设置为 github 的版本
+                        (setq appine-version github-version)
+
                         ;; 3. 强行停止当前旧版本 appine.el 的继续加载
                         (error "[Appine] Appine been updated and reloaded.  Aborting the current loading process of the old version!"))
                     
