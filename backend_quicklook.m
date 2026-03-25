@@ -31,6 +31,10 @@
 
 @implementation AppineQuickLookBackend
 
+- (AppineBackendKind)kind {
+    return AppineBackendKindQuickLook;
+}
+
 - (instancetype)initWithPath:(NSString *)path {
     if (self = [super init]) {
         _title = [path lastPathComponent] ?: @"Preview";

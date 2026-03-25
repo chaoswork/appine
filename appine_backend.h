@@ -25,6 +25,13 @@
 
 #import <Cocoa/Cocoa.h>
 
+typedef NS_ENUM(NSInteger, AppineBackendKind) {
+    AppineBackendKindUnknown = 0,
+    AppineBackendKindWeb,
+    AppineBackendKindPDF,
+    AppineBackendKindQuickLook,
+};
+
 @protocol AppineBackend <NSObject>
 
 // 必须实现：返回要嵌入的 Native View
@@ -33,9 +40,17 @@
 // 必须实现：返回 Tab 显示的标题
 @property (nonatomic, readonly, copy) NSString *title;
 
+// 必须实现：返回 Backend 类型
+@property (nonatomic, assign, readonly) AppineBackendKind kind;
+
 @optional
 // 可选实现：处理特定的动作（如 copy, paste, undo 等）
 - (void)performAction:(NSString *)actionName;
+// 显示/隐藏页面内查找栏
+- (void)toggleFindBar;
+// - (BOOL)isFindBarVisible;
+- (void)findNext;
+- (void)findPrev;
 
 @end
 

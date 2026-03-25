@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang=\"en\">
+<head>
+<meta charset=\"UTF-8\">
+<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">
+<title>Appine Usage</title>
+<style>
+  body { 
+    font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif; 
+    padding: 40px; 
+    line-height: 1.6; 
+    color: #333; 
+    background-color: #f9f9fa; 
+  }
+  h1 {
+    color: #0056b3;
+    margin-top: 0;
+  }
+  code { 
+    background: #eee; 
+    padding: 2px 6px; 
+    border-radius: 4px; 
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; 
+    font-size: 0.9em; 
+  }
+  .container { 
+    max-width: 800px; 
+    margin: 0 auto; 
+    background: #fff; 
+    padding: 30px 40px; 
+    border-radius: 12px; 
+    box-shadow: 0 4px 12px rgba(0,0,0,0.05); 
+  }
+  ul { padding-left: 24px; }
+  li { margin-bottom: 12px; }
+  .kbd {
+    display: inline-block;
+    padding: 3px 6px;
+    font-size: 0.85em;
+    line-height: 1;
+    color: #444;
+    background-color: #fafbfc;
+    border: 1px solid #d1d5da;
+    border-radius: 6px;
+    box-shadow: inset 0 -1px 0 #d1d5da;
+  }
+</style>
+</head>
+<body>
+<div class=\"container\">
+<h1 id="welcome-to-appine">Welcome to Appine</h1>
+<p><strong>Appine</strong> (App in Emacs) allows you to embed native
+macOS views directly inside Emacs windows.</p>
+<p>When Appine starts, it opens an embedded Appine Window tied to an
+*Appine Window* buffer. You can maximize it with <code>C-x 1</code>,
+close it with <code>C-x 0</code>, switch between buffers with
+<code>C-x o</code>. If you close it, you can reopen it with
+<code>C-x b</code> by switching to the *Appine Window* buffer. You can
+also scroll through the embedded Appine Window using <code>C-n</code>,
+<code>C-p</code>, <code>C-v</code>, <code>M-v</code>,
+<code>M-&lt;</code>, and <code>M-&gt;</code>, just as you would in an
+Emacs buffer.</p>
+<h2 id="commands-m-x">Commands (M-x)</h2>
+<ul>
+<li><code>appine</code>: Open Appine Window and show the usage.</li>
+<li><code>appine-open-url</code>: Open a URL in a new web tab.</li>
+<li><code>appine-open-file</code>: Open a local file (PDF, Word, etc.)
+in a new tab.</li>
+<li><code>appine-next-tab</code> / <code>appine-prev-tab</code>: Switch
+between tabs.</li>
+<li><code>appine-close-tab</code>: Close the current tab.</li>
+<li><code>appine-close</code>: Close Appine. This only closes the
+embedded view; the *Appine Buffer* remains in the background. You can
+reopen the *Appine Buffer* at any time to restore the view.</li>
+<li><code>appine-kill</code>: kill the Appine window completely.</li>
+</ul>
+<h2 id="shortcuts-when-focused">Shortcuts (When Focused)</h2>
+<p>Although there is a toolbar at the top, most common operations
+support both macOS and Emacs keybindings as much as possible. Currently
+supported shortcuts include:</p>
+<ul>
+<li>Open File: <code>C-x C-f</code> or <code>Cmd + o</code></li>
+<li>New Tab: <code>Cmd + t</code></li>
+<li>Close Tab: <code>Cmd + w</code></li>
+<li>Next Tab: <code>C-c f</code></li>
+<li>Previous Tab: <code>C-c b</code></li>
+<li>Forward Web Page: <code>C-c C-f</code></li>
+<li>Backward Web Page: <code>C-c C-b</code></li>
+<li>Reload Web Page: <code>Cmd + r</code></li>
+<li>Copy: <code>M-w</code> or <code>Cmd + c</code></li>
+<li>Cut: <code>C-w</code> or <code>Cmd + x</code></li>
+<li>Paste: <code>C-y</code> or <code>Cmd + v</code></li>
+<li>Undo: <code>C-/</code> or <code>Cmd + z</code></li>
+</ul>
+<h2 id="web-browser-plugins">Web Browser Plugins</h2>
+<h3 id="link-hints">Link Hints</h3>
+<p>To quickly open links on web pages, I wrote a simple link-hints
+plugin for Appine's built-in browser. It works similarly to Vimium -
+pressing <code>f</code> will highlight the links on the page, and then
+pressing the corresponding key will quickly open the link on the current
+page, or pressing <code>q</code> to quit the link hints, as shown
+below:</p>
+<p><img width="512" alt="Image" src="https://github.com/user-attachments/assets/2e86d223-0d5f-47a3-9e90-b3d3afa36c78" /></p>
+<h2 id="something-more">Something More</h2>
+<p>When the focus is on *Appine Window*, the *Appine Window* is active,
+and you can use it just like a native macOS app.</p>
+<p>When the focus is not on *Appine Window*, the *Appine Window* becomes
+inactive. In this state, it will be dimmed and locked.</p>
+<p>Enjoy the full power of native macOS rendering without leaving
+Emacs!</p>
+</div>
+</body>
+</html>

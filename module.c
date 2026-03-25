@@ -1,7 +1,7 @@
 /*
  * Filename: module.c
  * Project: Appine (App in Emacs)
- * Description: Emacs dynamic module to embed native macOS views 
+ * Description: Emacs dynamic module to embed native macOS views
  *              (WebKit, PDFKit, Quick Look, etc.) directly inside Emacs windows.
  * Author: Huang Chao <huangchao.cpp@gmail.com>
  * Copyright (C) 2026, Huang Chao, all rights reserved.
@@ -28,6 +28,13 @@
 
 int plugin_is_GPL_compatible; // dynamic-module 必须遵循 GPL 协议
 
+#define DEFINE_EMACS_0PARAM_WRAPPER(func_name, core_func)                    \
+    static emacs_value func_name(emacs_env *env, ptrdiff_t nargs,            \
+                                 emacs_value *args, void *data) {            \
+        core_func();                                                         \
+        return env->intern(env, "t");                                        \
+    }
+
 static emacs_value Fappine_set_debug_log(emacs_env *env, ptrdiff_t nargs, emacs_value *args, void *data) {
     // 使用 env->extract_integer 来获取 Elisp 传过来的整数
     intmax_t enable = env->extract_integer(env, args[0]);
@@ -38,7 +45,7 @@ static emacs_value Fappine_set_debug_log(emacs_env *env, ptrdiff_t nargs, emacs_
 static emacs_value Fappine_check_signal(emacs_env *env, ptrdiff_t nargs, emacs_value *args, void *data) {
     // 调用 appine_core.m 中的函数
     bool is_mine = appine_core_check_signal();
-    
+
     // 如果是 true 返回 Elisp 的 t，否则返回 nil
     return is_mine ? env->intern(env, "t") : env->intern(env, "nil");
 }
@@ -94,31 +101,6 @@ static emacs_value Fappine_move_resize(emacs_env *env, ptrdiff_t nargs, emacs_va
     return env->intern(env, "t");
 }
 
-static emacs_value Fappine_close_active_tab(emacs_env *env, ptrdiff_t nargs, emacs_value *args, void *data) {
-    appine_core_close_active_tab();
-    return env->intern(env, "t");
-}
-
-static emacs_value Fappine_select_next_tab(emacs_env *env, ptrdiff_t nargs, emacs_value *args, void *data) {
-    appine_core_select_next_tab();
-    return env->intern(env, "t");
-}
-
-static emacs_value Fappine_select_prev_tab(emacs_env *env, ptrdiff_t nargs, emacs_value *args, void *data) {
-    appine_core_select_prev_tab();
-    return env->intern(env, "t");
-}
-
-static emacs_value Fappine_focus(emacs_env *env, ptrdiff_t nargs, emacs_value *args, void *data) {
-    appine_core_focus();
-    return env->intern(env, "t");
-}
-
-static emacs_value Fappine_unfocus(emacs_env *env, ptrdiff_t nargs, emacs_value *args, void *data) {
-    appine_core_unfocus();
-    return env->intern(env, "t");
-}
-
 static emacs_value Fappine_set_active(emacs_env *env, ptrdiff_t nargs, emacs_value *args, void *data) {
     int active = get_emacs_int(env, args[0]);
     appine_core_set_active(active);
@@ -133,10 +115,15 @@ static emacs_value Fappine_perform_action(emacs_env *env, ptrdiff_t nargs, emacs
     return env->intern(env, "t");
 }
 
-static emacs_value Fappine_close(emacs_env *env, ptrdiff_t nargs, emacs_value *args, void *data) {
-    appine_core_close();
-    return env->intern(env, "t");
-}
+DEFINE_EMACS_0PARAM_WRAPPER(Fappine_close_active_tab, appine_core_close_active_tab)
+DEFINE_EMACS_0PARAM_WRAPPER(Fappine_select_next_tab, appine_core_select_next_tab)
+DEFINE_EMACS_0PARAM_WRAPPER(Fappine_select_prev_tab, appine_core_select_prev_tab)
+DEFINE_EMACS_0PARAM_WRAPPER(Fappine_web_go_forward, appine_core_web_go_forward)
+DEFINE_EMACS_0PARAM_WRAPPER(Fappine_web_go_back, appine_core_web_go_back)
+DEFINE_EMACS_0PARAM_WRAPPER(Fappine_web_reload, appine_core_web_reload)
+DEFINE_EMACS_0PARAM_WRAPPER(Fappine_focus, appine_core_focus)
+DEFINE_EMACS_0PARAM_WRAPPER(Fappine_unfocus, appine_core_unfocus)
+DEFINE_EMACS_0PARAM_WRAPPER(Fappine_close, appine_core_close)
 
 static void bind_function(emacs_env *env,
                           const char *name,
@@ -166,6 +153,14 @@ int emacs_module_init(struct emacs_runtime *runtime) {
                   "Select next embedded tab.");
     bind_function(env, "appine-native-select-prev-tab", 0, 0, Fappine_select_prev_tab,
                   "Select previous embedded tab.");
+
+    bind_function(env, "appine-native-web-go-forward", 0, 0, Fappine_web_go_forward,
+                  "show next web.");
+    bind_function(env, "appine-native-web-go-back", 0, 0, Fappine_web_go_back,
+                  "show last web.");
+    bind_function(env, "appine-native-web-reload", 0, 0, Fappine_web_reload,
+                  "reload webpage.");
+
     bind_function(env, "appine-native-focus", 0, 0, Fappine_focus,
                   "Focus active embedded native view.");
     bind_function(env, "appine-native-unfocus", 0, 0, Fappine_unfocus,
@@ -179,7 +174,7 @@ int emacs_module_init(struct emacs_runtime *runtime) {
     bind_function(env, "appine-set-debug-log", 1, 1, Fappine_set_debug_log,
               "Enable or disable native debug logging.");
     bind_function(env, "appine-check-signal", 0, 0, Fappine_check_signal,
-                  "Check if SIGUSR2 was triggered by appine deactivate button.");
+                  "Check if SIGUSR1 was triggered by appine deactivate button.");
 
     emacs_value provide = env->intern(env, "provide");
     emacs_value feature = env->intern(env, "appine-module");

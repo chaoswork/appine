@@ -1,7 +1,7 @@
 /*
  * Filename: appine_core.h
  * Project: Appine (App in Emacs)
- * Description: Emacs dynamic module to embed native macOS views 
+ * Description: Emacs dynamic module to embed native macOS views
  *              (WebKit, PDFKit, Quick Look, etc.) directly inside Emacs windows.
  * Author: Huang Chao <huangchao.cpp@gmail.com>
  * Copyright (C) 2026, Huang Chao, all rights reserved.
@@ -44,6 +44,23 @@ int appine_core_perform_action(const char *action_name);
 
 void appine_core_set_debug_log(int enable);
 bool appine_core_check_signal(void);
+
+int appine_core_web_go_forward(void);
+int appine_core_web_go_back(void);
+int appine_core_web_reload(void);
+
+#ifdef __OBJC__
+#import <Foundation/Foundation.h>
+
+extern BOOL g_appine_debug_log;
+
+#define APPINE_LOG(fmt, ...) do { \
+    if (g_appine_debug_log) { \
+        NSLog((@"[appine] " fmt), ##__VA_ARGS__); \
+    } \
+} while(0)
+#endif
+  
 
 #ifdef __cplusplus
 }

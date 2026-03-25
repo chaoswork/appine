@@ -1,7 +1,7 @@
 /*
  * Filename: appine_core.m
  * Project: Appine (App in Emacs)
- * Description: Emacs dynamic module to embed native macOS views 
+ * Description: Emacs dynamic module to embed native macOS views
  *              (WebKit, PDFKit, Quick Look, etc.) directly inside Emacs windows.
  * Author: Huang Chao <huangchao.cpp@gmail.com>
  * Copyright (C) 2026, Huang Chao, all rights reserved.
@@ -28,90 +28,26 @@
 #import "appine_core.h"
 #import "appine_backend.h"
 
-// ==========================================
-// 日志系统
-// ==========================================
-static BOOL g_appine_debug_log = NO;
-
-#define APPINE_LOG(fmt, ...) do { \
-    if (g_appine_debug_log) { \
-        NSLog((@"[appine] " fmt), ##__VA_ARGS__); \
-    } \
-} while(0)
+// ===========================================================================
+// Log module, for debug
+// ===========================================================================
+BOOL g_appine_debug_log = NO;
 
 void appine_core_set_debug_log(int enable) {
     g_appine_debug_log = (enable != 0);
     NSLog(@"[appine] Debug logging %@", g_appine_debug_log ? @"enabled" : @"disabled");
 }
 
-// ==========================================
+// ===========================================================================
 // 辅助 SIGUSR1 信号源判断
-// ==========================================
+// ===========================================================================
 static atomic_bool appine_deactivate_flag = false;
 bool appine_core_check_signal(void) {
     // 检查并重置为 false
     return atomic_exchange(&appine_deactivate_flag, false);
 }
 
-// ==========================================
-// 全局事件拦截器，主要用来 DEBUG 
-// ==========================================
-static void appine_setup_global_event_monitor(void) {
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskLeftMouseDown handler:^NSEvent * _Nullable(NSEvent * _Nonnull event) {
-            NSView *hitView = nil;
-            if (event.window && event.window.contentView) {
-                hitView = [event.window.contentView hitTest:event.locationInWindow];
-            }
-            
-            if (g_appine_debug_log) {
-                NSLog(@"[appine] GLOBAL CLICK at %@, hitTest view: %@, window: %@", 
-                      NSStringFromPoint(event.locationInWindow), [hitView className], [event.window className]);
-            }
-            
-            // 绕过 Emacs 事件黑洞
-            if ([hitView isKindOfClass:[NSSegmentedControl class]]) {
-                NSSegmentedControl *tabControl = (NSSegmentedControl *)hitView;
-                NSPoint loc = [tabControl convertPoint:event.locationInWindow fromView:nil];
-                NSInteger count = tabControl.segmentCount;
-                if (count > 0) {
-                    CGFloat width = tabControl.bounds.size.width / count;
-                    NSInteger clickedIdx = (NSInteger)(loc.x / width);
-                    if (clickedIdx >= 0 && clickedIdx < count && [tabControl isEnabledForSegment:clickedIdx]) {
-                        tabControl.selectedSegment = clickedIdx;
-                        if (tabControl.target && tabControl.action) {
-                            #pragma clang diagnostic push
-                            #pragma clang diagnostic ignored "-Warc-performSelector-leaks"
-                            [tabControl.target performSelector:tabControl.action withObject:tabControl];
-                            #pragma clang diagnostic pop
-                        }
-                    }
-                }
-                return nil;
-            } 
-            else if ([hitView isKindOfClass:[NSButton class]]) {
-                NSButton *btn = (NSButton *)hitView;
-                if (btn.isEnabled) {
-                    if (btn.target && btn.action) {
-                        #pragma clang diagnostic push
-                        #pragma clang diagnostic ignored "-Warc-performSelector-leaks"
-                        [btn.target performSelector:btn.action withObject:btn];
-                        #pragma clang diagnostic pop
-                    }
-                }
-                return nil;
-            }
-            // 允许点击任何输入框 (如地址栏) 时强制获取焦点
-            else if ([hitView isKindOfClass:[NSTextField class]] || [hitView isKindOfClass:[NSTextView class]]) {
-                [event.window makeFirstResponder:hitView];
-                return event;
-            }
-            
-            return event;
-        }];
-    });
-}
+#pragma mark - Backends
 
 extern id<AppineBackend> appine_create_web_backend(NSString *urlString);
 extern id<AppineBackend> appine_create_pdf_backend(NSString *path);
@@ -120,20 +56,20 @@ static id<AppineBackend> appine_create_backend_for_file(NSString *path) {
     // 智能判断使用appine_create_quicklook_backend, appine_create_pdf_backend
     // 或者 appine_create_web_backend
     if (!path || path.length == 0) return nil;
-    
+
     UTType *fileType = [UTType typeWithFilenameExtension:path.pathExtension];
-    
+
     if ([fileType conformsToType:UTTypePDF]) {
         return appine_create_pdf_backend(path);
-    } 
-    else if ([fileType conformsToType:UTTypeHTML] || 
+    }
+    else if ([fileType conformsToType:UTTypeHTML] ||
              [fileType conformsToType:UTTypeWebArchive]) {
         NSURL *url = [NSURL fileURLWithPath:path];
         return appine_create_web_backend(url.absoluteString);
-    } 
+    }
     else {
         BOOL isSafeForQuickLook = NO;
-        
+
         if (fileType != nil) {
             // 【白名单】
             NSArray<UTType *> *safeTypes = @[
@@ -146,7 +82,7 @@ static id<AppineBackend> appine_create_backend_for_file(NSString *path) {
                     break;
                 }
             }
-            
+
             // 【黑名单】
             if ([fileType conformsToType:UTTypeExecutable] ||
                 [fileType conformsToType:UTTypeArchive] ||
@@ -158,16 +94,16 @@ static id<AppineBackend> appine_create_backend_for_file(NSString *path) {
                 isSafeForQuickLook = NO;
             }
         }
-        
+
         if (isSafeForQuickLook) {
             return appine_create_quicklook_backend(path);
         } else {
             NSString *ext = path.pathExtension.length > 0 ? path.pathExtension : @"无后缀/未知";
-            NSLog(@"[Appine] 拦截了不支持或可能导致崩溃的文件类型: %@", ext);
-            
+            APPINE_LOG(@"[Appine] 拦截了不支持或可能导致崩溃的文件类型: %@", ext);
+
             NSAlert *alert = [[NSAlert alloc] init];
             alert.messageText = @"不支持预览该文件";
-            alert.informativeText = [NSString stringWithFormat:@"Appine 无法安全地预览此类型的文件 (%@)。\n为防止底层渲染服务崩溃，已拦截此操作。", ext];
+            alert.informativeText = [NSString stringWithFormat:@"Appine can’t safely preview this type of file (%@).\nPreview has been blocked.\nAppine 无法安全地预览此类型的文件。\n为防止底层渲染服务崩溃，已拦截此操作。", ext];
             [alert runModal];
             return nil;
         }
@@ -219,11 +155,107 @@ static AppineState *appine_state(void) {
 
 #pragma mark - Helpers
 
+static NSView *appine_get_emacs_view(void) {
+    AppineState *state = appine_state();
+    if (!state.hostWindow) return nil;
+
+    // 1. 尝试从 superview 往上找
+    NSView *emacsView = state.containerView;
+    while (emacsView) {
+        emacsView = emacsView.superview;
+        if ([emacsView.className containsString:@"Emacs"]) {
+            return emacsView;
+        }
+    }
+    // 2. 如果没找到，从 window.contentView 找
+    emacsView = state.hostWindow.contentView;
+    if ([emacsView.className containsString:@"Emacs"]) {
+        return emacsView;
+    }
+    // 3. 尝试从 subviews 里面找
+    for (NSView *sub in emacsView.subviews) {
+        if ([sub.className containsString:@"Emacs"]) {
+            return sub;
+        }
+    }
+     // 4. 兜底返回 contentView
+    return state.hostWindow.contentView;
+}
+
+// 递归查找真正的可滚动视图 (NSScrollView 或 PDFView)
+static NSView *appine_find_scroll_target(NSView *view) {
+    if (!view) return nil;
+
+    // 1. 如果本身就是 NSScrollView (这会匹配到 WKWebView 内部私有的 WKScrollView)
+    if ([view isKindOfClass:[NSScrollView class]]) {
+        return view;
+    }
+
+    // 2. 递归查找子视图
+    for (NSView *subview in view.subviews) {
+        NSView *found = appine_find_scroll_target(subview);
+        if (found) return found;
+    }
+
+    // 3. 如果实在找不到 NSScrollView，退回到返回 WKWebView 或 PDFView 本身
+    if ([view isKindOfClass:NSClassFromString(@"WKWebView")] ||
+        [view isKindOfClass:NSClassFromString(@"PDFView")]) {
+        return view;
+    }
+
+    return nil;
+}
+// 递归查找真正需要接收键盘焦点的视图 (WKWebView 或 PDFView)
+static NSView *appine_find_focus_target(NSView *view) {
+    if (!view) return nil;
+
+    // 1. 如果本身就是 WKWebView 或 PDFView，直接返回
+    if ([view isKindOfClass:NSClassFromString(@"WKWebView")] ||
+        [view isKindOfClass:NSClassFromString(@"PDFView")]) {
+        return view;
+    }
+    // 2. 递归查找子视图
+    for (NSView *subview in view.subviews) {
+        NSView *found = appine_find_focus_target(subview);
+        if ([found isKindOfClass:NSClassFromString(@"WKWebView")] ||
+            [found isKindOfClass:NSClassFromString(@"PDFView")]) {
+            return found;
+        }
+    }
+    // 3. 兜底返回原视图
+    return view;
+}
+
 static AppineTabItem *appine_find_tab(NSInteger tabId) {
     for (AppineTabItem *item in appine_state().tabs) {
         if (item.tabId == tabId) return item;
     }
     return nil;
+}
+
+// 如果当前 Appine 是激活状态，则强制将 macOS 焦点对齐到当前活跃的视图上
+static void appine_restore_focus_if_active(void) {
+    AppineState *state = appine_state();
+    if (state.isActive && state.hostWindow) {
+        AppineTabItem *active = appine_find_tab(state.activeTabId);
+        if (active && active.backend && active.backend.view) {
+            // 查找真正的焦点目标，而不是把焦点给 NSView 容器
+            NSView *focusTarget = appine_find_focus_target(active.backend.view);
+            APPINE_LOG(@"Restoring focus. Backend view: %@, Focus target: %@", 
+                       [active.backend.view className], [focusTarget className]);
+            [state.hostWindow makeFirstResponder:focusTarget];
+        }
+    }
+}
+
+static AppineBackendKind appine_active_backend_kind(void) {
+    AppineState *state = appine_state();
+    AppineTabItem *active = appine_find_tab(state.activeTabId);
+    if (!active || !active.backend) return AppineBackendKindUnknown;
+    if ([active.backend respondsToSelector:@selector(kind)]) {
+        return active.backend.kind;
+    }
+    return AppineBackendKindUnknown;
 }
 
 static NSWindow *appine_target_window(void) {
@@ -274,19 +306,19 @@ static void appine_add_tab(id<AppineBackend> backend);
         nativeTarget = [self.window.contentView hitTest:e.locationInWindow];
         self.hidden = overlayWasHidden;
     }
-    
+
     BOOL isNativeControl = (nativeTarget && (nativeTarget == state.tabControl || [nativeTarget isKindOfClass:[NSControl class]]));
     NSView *target = [self emacsTargetViewForEvent:e];
-    
+
     APPINE_LOG(@"Overlay mouseDown forwarded to: %@, nativeTarget: %@", [target className], [nativeTarget className]);
-    
+
     if (target && target != self) {
         [self.window makeFirstResponder:target];
         [target mouseDown:e];
     } else {
         [super mouseDown:e];
     }
-    
+
     if (isNativeControl) {
         APPINE_LOG(@"Also forwarding mouseDown to native control: %@", [nativeTarget className]);
         [nativeTarget mouseDown:e];
@@ -312,16 +344,48 @@ static void appine_add_tab(id<AppineBackend> backend);
 - (void)focusAndSendAction:(SEL)action {
     appine_set_active(YES);
     if (![NSApp sendAction:action to:nil from:nil]) {
-        NSLog(@"[appine] action not handled: %@", NSStringFromSelector(action));
+        APPINE_LOG(@"[appine] action not handled: %@", NSStringFromSelector(action));
     }
 }
+- (BOOL)sendScrollActionHandled:(SEL)action {
+    appine_set_active(YES);
+    AppineState *state = appine_state();
+    AppineTabItem *active = appine_find_tab(state.activeTabId);
+
+    if (active && active.backend && active.backend.view) {
+        NSView *backendView = active.backend.view;
+        NSView *targetView = appine_find_scroll_target(backendView);
+
+        if (targetView) {
+            // 仅当目标确实支持该 selector 才发送并吞键
+            if ([targetView respondsToSelector:action]) {
+                [NSApp sendAction:action to:targetView from:self];
+                return YES;
+            }
+            // fallback 1: superview 链
+            NSView *v = targetView.superview;
+            while (v) {
+                if ([v respondsToSelector:action]) {
+                    [NSApp sendAction:action to:v from:self];
+                    return YES;
+                }
+                v = v.superview;
+            }
+            // fallback 2: backend 根视图
+            if ([active.backend.view respondsToSelector:action]) {
+                [NSApp sendAction:action to:active.backend.view from:self];
+                return YES;
+            }
+        }
+    }
+    APPINE_LOG(@"[appine] scroll target not found for action: %@", NSStringFromSelector(action));
+    return NO;
+}
+
+
 - (void)deactivate:(id)sender {
     // Appine Window 失去焦点，更新 UI 状态
     appine_set_active(NO);
-    NSWindow *win = appine_state().hostWindow;
-    if (win && win.contentView) {
-        [win makeFirstResponder:win.contentView];
-    }
     // 标记这个信号是我们发出的
     atomic_store(&appine_deactivate_flag, true);
     // 发送给整个进程，让 Emacs 的主线程去捕获它
@@ -334,12 +398,14 @@ static void appine_add_tab(id<AppineBackend> backend);
     NSOpenPanel *panel = [NSOpenPanel openPanel];
     panel.canChooseFiles = YES;
     panel.canChooseDirectories = NO;
-    
+
     if ([panel runModal] == NSModalResponseOK && panel.URL) {
         NSString *path = panel.URL.path;
         id<AppineBackend> backend = appine_create_backend_for_file(path);
         if (backend) {
             appine_add_tab(backend);
+            // 这一行可以去掉了。
+            // appine_restore_focus_if_active();
         }
     }
 }
@@ -347,7 +413,54 @@ static void appine_add_tab(id<AppineBackend> backend);
 - (void)cut:(id)sender { (void)sender; [self focusAndSendAction:@selector(cut:)]; }
 - (void)copy:(id)sender { (void)sender; [self focusAndSendAction:@selector(copy:)]; }
 - (void)paste:(id)sender { (void)sender; [self focusAndSendAction:@selector(paste:)]; }
-- (void)find:(id)sender { (void)sender; [self focusAndSendAction:@selector(performFindPanelAction:)]; }
+- (void)find:(id)sender {
+    (void)sender;
+    appine_set_active(YES);
+    
+    // 直接调用当前活跃 backend 的 toggleFindBar
+    AppineState *state = appine_state();
+    AppineTabItem *active = appine_find_tab(state.activeTabId);
+    
+    if (active && active.backend &&
+        [active.backend respondsToSelector:@selector(toggleFindBar)]) {
+        [active.backend toggleFindBar];
+        APPINE_LOG(@"[appine] toggleFindBar called on backend");
+    } else {
+        APPINE_LOG(@"[appine] active backend does not support find bar");
+    }
+}
+
+// PDF 的方向和正常是相反的, interesting...
+- (BOOL)scrollPageDown:(id)sender {
+    (void)sender;
+    SEL sel = (appine_active_backend_kind() == AppineBackendKindPDF)
+        ? @selector(scrollPageUp:)
+        : @selector(scrollPageDown:);
+    return [self sendScrollActionHandled:sel];
+}
+- (BOOL)scrollPageUp:(id)sender {
+    (void)sender;
+    SEL sel = (appine_active_backend_kind() == AppineBackendKindPDF)
+        ? @selector(scrollPageDown:)
+        : @selector(scrollPageUp:);
+    return [self sendScrollActionHandled:sel];
+}
+- (BOOL)scrollLineDown:(id)sender {
+    (void)sender;
+    SEL sel = (appine_active_backend_kind() == AppineBackendKindPDF)
+        ? @selector(scrollLineUp:)
+        : @selector(scrollLineDown:);
+    return [self sendScrollActionHandled:sel];
+}
+- (BOOL)scrollLineUp:(id)sender {
+    (void)sender;
+    SEL sel = (appine_active_backend_kind() == AppineBackendKindPDF)
+        ? @selector(scrollLineDown:)
+        : @selector(scrollLineUp:);
+    return [self sendScrollActionHandled:sel];
+}
+- (BOOL)scrollToTop:(id)sender    { (void)sender; return [self sendScrollActionHandled:@selector(scrollToBeginningOfDocument:)]; }
+- (BOOL)scrollToBottom:(id)sender { (void)sender; return [self sendScrollActionHandled:@selector(scrollToEndOfDocument:)]; }
 
 - (void)tabChanged:(NSSegmentedControl *)sender {
     AppineState *state = appine_state();
@@ -356,27 +469,249 @@ static void appine_add_tab(id<AppineBackend> backend);
         state.activeTabId = state.tabs[sender.selectedSegment].tabId;
         APPINE_LOG(@"Switching to tabId: %ld", (long)state.activeTabId);
         appine_attach_active_view();
-        if (state.isActive) [state.hostWindow makeFirstResponder:appine_find_tab(state.activeTabId).backend.view];
     }
 }
+- (void)nextTab:(NSSegmentedControl *)sender {
+    AppineState *state = appine_state();
+    if (state.tabs.count < 2) return;
+    AppineTabItem *active = appine_find_tab(state.activeTabId);
+    NSInteger idx = [state.tabs indexOfObject:active];
+    state.activeTabId = state.tabs[(idx + 1) % state.tabs.count].tabId;
+    appine_attach_active_view();
+}
+- (void)prevTab:(NSSegmentedControl *)sender {
+    AppineState *state = appine_state();
+    if (state.tabs.count < 2) return;
+    AppineTabItem *active = appine_find_tab(state.activeTabId);
+    NSInteger idx = [state.tabs indexOfObject:active];
+    state.activeTabId = state.tabs[(idx - 1 + state.tabs.count) % state.tabs.count].tabId;
+    appine_attach_active_view();
+}
+
+- (void)findNext:(id)sender {
+    (void)sender;
+    appine_set_active(YES);
+    
+    AppineState *state = appine_state();
+    AppineTabItem *active = appine_find_tab(state.activeTabId);
+    
+    // 注意这里是 findNext: 带冒号
+    if (active && active.backend &&
+        [active.backend respondsToSelector:@selector(findNext:)]) {
+        #pragma clang diagnostic push
+        #pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+        [active.backend performSelector:@selector(findNext:) withObject:nil];
+        #pragma clang diagnostic pop
+        APPINE_LOG(@"[appine] findNext: called on backend");
+    }
+}
+
+- (void)findPrevious:(id)sender {
+    (void)sender;
+    appine_set_active(YES);
+    
+    AppineState *state = appine_state();
+    AppineTabItem *active = appine_find_tab(state.activeTabId);
+    
+    // 注意这里是 findPrevious: 带冒号
+    if (active && active.backend &&
+        [active.backend respondsToSelector:@selector(findPrevious:)]) {
+        #pragma clang diagnostic push
+        #pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+        [active.backend performSelector:@selector(findPrevious:) withObject:nil];
+        #pragma clang diagnostic pop
+        APPINE_LOG(@"[appine] findPrevious: called on backend");
+    }
+}
+
+
 @end
 
 static AppineActionTarget *g_action_target = nil;
+
+
+#pragma mark - Event Monitor
+// ===========================================================================
+// Globla Event Monitor
+// ===========================================================================
+static void appine_setup_global_event_monitor(void) {
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        // 同时监听 鼠标左键 和 键盘按下
+        NSEventMask mask = NSEventMaskLeftMouseDown | NSEventMaskKeyDown;
+        [NSEvent addLocalMonitorForEventsMatchingMask:mask handler:^NSEvent * _Nullable(NSEvent * _Nonnull event) {
+
+            // 调试：无条件打印所有键盘事件
+            if (event.type == NSEventTypeKeyDown) {
+                NSEventModifierFlags flags = event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask;
+                APPINE_LOG(@"[appine-debug-event] KeyDown RECEIVED - keyCode: %hu, chars: '%@', charsIgnoring: '%@', ctrl:%d opt:%d shift:%d cmd:%d",
+                      event.keyCode,
+                      event.characters,
+                      event.charactersIgnoringModifiers,
+                      (flags & NSEventModifierFlagControl) != 0,
+                      (flags & NSEventModifierFlagOption) != 0,
+                      (flags & NSEventModifierFlagShift) != 0,
+                      (flags & NSEventModifierFlagCommand) != 0);
+            }
+            // ------------------------------------------------
+            // 拦截键盘事件 (处理 Emacs 风格的 C-y, M-w 等)
+            // 经过测试不同的 emacs 版本，Ctrl key的捕获基本没有问题
+            // 但是 Meta 键有时候会被不同层捕获到，可能走不到这个 monitor 中。
+            // ------------------------------------------------
+            APPINE_LOG(@"envet.type: %lu, NSEventTypeKeyDown: %lu", event.type, NSEventTypeKeyDown);
+            if (event.type == NSEventTypeKeyDown) {
+                AppineState *state = appine_state();
+                if (!state.containerView || !state.isActive || !state.hostWindow) {
+                    return event;
+                }                
+                if (state.isActive && state.hostWindow && state.hostWindow.firstResponder) {
+                    NSResponder *responder = state.hostWindow.firstResponder;
+                    BOOL isAppineFocused = NO;
+                    if ([responder isKindOfClass:[NSView class]]) {
+                        NSView *v = (NSView *)responder;
+                        while (v) {
+                            if (v == state.containerView) {
+                                isAppineFocused = YES;
+                                break;
+                            }
+                            v = v.superview;
+                        }
+                    }
+                    APPINE_LOG(@"check isAppineFocused: %d", isAppineFocused);
+                    if (isAppineFocused) {
+                        NSEventModifierFlags flags = event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask;
+                        NSString *chars = event.charactersIgnoringModifiers.lowercaseString;
+
+                        BOOL isCtrl = (flags & NSEventModifierFlagControl) != 0;
+                        BOOL isOpt  = (flags & NSEventModifierFlagOption) != 0;
+                        BOOL isShift = (flags & NSEventModifierFlagShift) != 0;
+
+                        APPINE_LOG(@"check isCtrl: %d, isOpt: %d, isShift: %d, chars: %@", isCtrl, isOpt, isShift, chars);
+                        // ----------------------------------------------------------
+                        // 拦截 Emacs 前缀键 (C-x, C-c, C-h) 和全局键 (C-g, M-x)
+                        // ----------------------------------------------------------
+                        if ((isCtrl && ([chars isEqualToString:@"x"] ||
+                                        [chars isEqualToString:@"c"] ||
+                                        [chars isEqualToString:@"g"] ||
+                                        [chars isEqualToString:@"h"])) ||
+                            (isOpt  && [chars isEqualToString:@"x"])) {
+
+                            // 寻找 EmacsMainView 尝试 superview
+                            NSView *emacsView = appine_get_emacs_view();
+                            if (emacsView) {
+                                // 将 macOS 的键盘焦点强行还给 Emacs 主视图
+                                [state.hostWindow makeFirstResponder:emacsView];
+                            }
+                            // 直接 return event，让系统自然地把按键分发给 Emacs
+                            return event;
+                        }
+
+                        // ----------------------------------------------------------
+                        // 拦截并映射到原生 Action (C-y, C-w, M-w, C-/, C-s)
+                        // ----------------------------------------------------------
+                        if (isCtrl && [chars isEqualToString:@"y"]) { [g_action_target paste:nil]; return nil; }
+                        if (isCtrl && [chars isEqualToString:@"w"]) { [g_action_target cut:nil]; return nil; }
+                        if (isOpt  && [chars isEqualToString:@"w"]) { [g_action_target copy:nil]; return nil; }
+                        if (isCtrl && [chars isEqualToString:@"/"]) { [g_action_target undo:nil]; return nil; }
+                        if (isCtrl && [chars isEqualToString:@"s"]) { [g_action_target find:nil]; return nil; }
+                        if (isCtrl && [chars isEqualToString:@"f"]) { [g_action_target nextTab:nil]; return nil; }
+                        if (isCtrl && [chars isEqualToString:@"b"]) { [g_action_target prevTab:nil]; return nil; }
+                        // ==========================================================
+                        // 3. 拦截滚动快捷键 (C-v, M-v, C-n, C-p, M-<, M->)
+                        // ==========================================================
+
+                        if (isCtrl && [chars isEqualToString:@"v"]) { return [g_action_target scrollPageDown:nil] ? nil:event; }
+                        if (isOpt  && [chars isEqualToString:@"v"]) { return [g_action_target scrollPageUp:nil] ? nil:event; }
+                        if (isCtrl && [chars isEqualToString:@"n"]) { return [g_action_target scrollLineDown:nil] ? nil:event; }
+                        if (isCtrl && [chars isEqualToString:@"p"]) { return [g_action_target scrollLineUp:nil] ? nil:event; }
+
+                        // M-< 和 M-> 在美式键盘上通常是 Option + Shift + , 和 Option + Shift + .
+                        // charactersIgnoringModifiers 有时会受 Shift 影响，所以同时兼容逗号句号和尖括号
+                        if (isOpt && isShift && ([chars isEqualToString:@","] || [chars isEqualToString:@"<"])) {
+                            return [g_action_target scrollToTop:nil] ? nil: event;
+                        }
+                        if (isOpt && isShift && ([chars isEqualToString:@"."] || [chars isEqualToString:@">"])) {
+                            return [g_action_target scrollToBottom:nil] ? nil:event;
+                        }
+                        // 如果按键没有被上面的逻辑拦截（比如普通的字母 f，或者在网页输入框打字），
+                        // 且当前焦点在 Appine 内部，我们必须手动把事件发给 WKWebView，
+                        // 然后返回 nil，防止 Emacs 拦截它！
+                        if (state.hostWindow.firstResponder) {
+                            [state.hostWindow.firstResponder keyDown:event];
+                            APPINE_LOG(@"key send to current firstResponder: %@", [state.hostWindow.firstResponder className]);                                        return nil;
+                        }
+                    }
+                }
+                return event;
+            }
+            // ----------------------------------------------------------
+            // 原有的鼠标点击逻辑 (绕过 Emacs 事件黑洞)
+            // ----------------------------------------------------------
+            NSView *hitView = nil;
+            if (event.window && event.window.contentView) {
+                hitView = [event.window.contentView hitTest:event.locationInWindow];
+            }
+
+            APPINE_LOG(@"[appine] GLOBAL CLICK at %@, hitTest view: %@, window: %@",
+                NSStringFromPoint(event.locationInWindow), [hitView className], [event.window className]);
+
+            if ([hitView isKindOfClass:[NSSegmentedControl class]]) {
+                NSSegmentedControl *tabControl = (NSSegmentedControl *)hitView;
+                NSPoint loc = [tabControl convertPoint:event.locationInWindow fromView:nil];
+                NSInteger count = tabControl.segmentCount;
+                if (count > 0) {
+                    CGFloat width = tabControl.bounds.size.width / count;
+                    NSInteger clickedIdx = (NSInteger)(loc.x / width);
+                    if (clickedIdx >= 0 && clickedIdx < count && [tabControl isEnabledForSegment:clickedIdx]) {
+                        tabControl.selectedSegment = clickedIdx;
+                        if (tabControl.target && tabControl.action) {
+                            #pragma clang diagnostic push
+                            #pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+                            [tabControl.target performSelector:tabControl.action withObject:tabControl];
+                            #pragma clang diagnostic pop
+                        }
+                    }
+                }
+                return nil;
+            }
+            else if ([hitView isKindOfClass:[NSButton class]]) {
+                NSButton *btn = (NSButton *)hitView;
+                if (btn.isEnabled) {
+                    if (btn.target && btn.action) {
+                        #pragma clang diagnostic push
+                        #pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+                        [btn.target performSelector:btn.action withObject:btn];
+                        #pragma clang diagnostic pop
+                    }
+                }
+                return nil;
+            }
+            else if ([hitView isKindOfClass:[NSTextField class]] || [hitView isKindOfClass:[NSTextView class]]) {
+                [event.window makeFirstResponder:hitView];
+                return event;
+            }
+
+            return event;
+        }];
+    });
+}
+
 
 #pragma mark - UI Management
 
 static void appine_ensure_container(void) {
     appine_setup_global_event_monitor(); // 启动全局事件追踪，后续可以加开关关闭？
-    
+
     AppineState *state = appine_state();
     if (state.containerView) return;
-    
+
     NSWindow *win = appine_target_window();
     if (!win) return;
-    
+
+    state.isActive = NO;
     state.hostWindow = win;
     g_action_target = [[AppineActionTarget alloc] init];
-    
+
     state.containerView = [[NSView alloc] initWithFrame:state.targetRect];
     [win.contentView addSubview:state.containerView];
 
@@ -388,10 +723,10 @@ static void appine_ensure_container(void) {
     state.toolbarStack = [NSStackView stackViewWithViews:@[]];
     state.toolbarStack.orientation = NSUserInterfaceLayoutOrientationHorizontal;
     // TODO：这里可能还有点问题，排版还是都靠左边了，有空了再修复。
-    state.toolbarStack.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable; 
+    state.toolbarStack.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
     [state.toolbarView addSubview:state.toolbarStack];
     [state.containerView addSubview:state.toolbarView];
-    
+
     // 左侧按钮组
     NSArray *leftBtns = @[@"Deactivate", @"Open File", @"New Tab", @"Close Tab"];
     NSArray *leftSels = @[@"deactivate:", @"openFile:", @"newTab:", @"closeTab:"];
@@ -400,13 +735,13 @@ static void appine_ensure_container(void) {
         [btn setBezelStyle:NSBezelStyleTexturedRounded];
         [state.toolbarStack addArrangedSubview:btn];
     }
-    
+
     // 中间空白区
     NSView *spacer = [[NSView alloc] init];
     // 设置极低的抗拉伸优先级，使其自动填满所有剩余空间
     [spacer setContentHuggingPriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
     [state.toolbarStack addArrangedSubview:spacer];
-    
+
     // 右侧编辑按钮组
     NSArray *rightBtns = @[@"Cut", @"Copy", @"Paste", @"Undo", @"Find"];
     NSArray *rightSels = @[@"cut:", @"copy:", @"paste:", @"undo:", @"find:"];
@@ -415,7 +750,7 @@ static void appine_ensure_container(void) {
         [btn setBezelStyle:NSBezelStyleTexturedRounded];
         [state.toolbarStack addArrangedSubview:btn];
     }
-    
+
     state.tabBarView = [[NSView alloc] init];
     state.tabControl = [NSSegmentedControl segmentedControlWithLabels:@[] trackingMode:NSSegmentSwitchTrackingSelectOne target:g_action_target action:@selector(tabChanged:)];
     // 等宽分布
@@ -424,13 +759,13 @@ static void appine_ensure_container(void) {
     }
     [state.tabBarView addSubview:state.tabControl];
     [state.containerView addSubview:state.tabBarView];
-    
+
     state.contentHostView = [[NSView alloc] init];
     [state.containerView addSubview:state.contentHostView];
-    
+
     state.inactiveOverlayView = [[AppineInactiveOverlayView alloc] init];
     [state.containerView addSubview:state.inactiveOverlayView];
-    
+
     appine_apply_rect();
     appine_apply_visual_state();
 }
@@ -438,14 +773,14 @@ static void appine_ensure_container(void) {
 static void appine_apply_rect(void) {
     AppineState *state = appine_state();
     if (!state.containerView) return;
-    
+
     [state.containerView setFrame:state.targetRect];
     NSRect bounds = state.containerView.bounds;
-    
+
     CGFloat th = bounds.size.height >= kAppineToolbarHeight ? kAppineToolbarHeight : 0;
     CGFloat tbh = bounds.size.height >= (th + kAppineTabBarHeight) ? kAppineTabBarHeight : 0;
     CGFloat ch = MAX(0, bounds.size.height - th - tbh);
-    
+
     [state.toolbarView setFrame:NSMakeRect(0, bounds.size.height - th, bounds.size.width, th)];
     [state.toolbarStack setFrame:NSInsetRect(state.toolbarView.bounds, 6, 4)];
     [state.tabBarView setFrame:NSMakeRect(0, ch, bounds.size.width, tbh)];
@@ -457,7 +792,7 @@ static void appine_apply_rect(void) {
 static void appine_apply_visual_state(void) {
     AppineState *state = appine_state();
     BOOL active = state.isActive;
-    
+
     state.toolbarView.wantsLayer = YES;
     state.toolbarView.layer.backgroundColor = [NSColor controlBackgroundColor].CGColor;
 
@@ -470,7 +805,7 @@ static void appine_apply_visual_state(void) {
     state.contentHostView.layer.borderColor = active ? [NSColor keyboardFocusIndicatorColor].CGColor : [NSColor separatorColor].CGColor;
 
     state.inactiveOverlayView.hidden = active;
-    
+
     for (NSView *v in state.toolbarStack.arrangedSubviews) {
         if ([v isKindOfClass:[NSButton class]]) {
             NSButton *btn = (NSButton *)v;
@@ -478,36 +813,37 @@ static void appine_apply_visual_state(void) {
         }
     }
 }
+
 static void appine_rebuild_tabs(void) {
     AppineState *state = appine_state();
     if (!state.tabControl) return;
-    
+
     [state.tabControl setSegmentCount:state.tabs.count];
     NSInteger selectedIdx = -1;
-    
+
     for (NSInteger i = 0; i < (NSInteger)state.tabs.count; i++) {
         AppineTabItem *item = state.tabs[i];
-        
+
         // 获取标题并进行硬性长度截断（防止单个 Tab 时标题过长）
         NSString *title = item.backend.title ?: @"Tab";
         const NSUInteger kMaxTitleLength = 30;
         if (title.length > kMaxTitleLength) {
             title = [[title substringToIndex:kMaxTitleLength - 1] stringByAppendingString:@"…"];
         }
-        
+
         [state.tabControl setLabel:title forSegment:i];
         if (item.tabId == state.activeTabId) selectedIdx = i;
     }
-    
+
     if (selectedIdx >= 0) [state.tabControl setSelectedSegment:selectedIdx];
 }
 
 static void appine_attach_active_view(void) {
     AppineState *state = appine_state();
     if (!state.contentHostView) return;
-    
+
     for (NSView *v in state.contentHostView.subviews) [v removeFromSuperview];
-    
+
     AppineTabItem *active = appine_find_tab(state.activeTabId);
     if (active && active.backend.view) {
         NSView *v = active.backend.view;
@@ -516,25 +852,54 @@ static void appine_attach_active_view(void) {
         [state.contentHostView addSubview:v];
     }
     appine_rebuild_tabs();
+    // 保险：对齐焦点
+    appine_restore_focus_if_active();
 }
 
 static void appine_set_active(BOOL active) {
     AppineState *state = appine_state();
-    
-    if (state.isActive == active) return;
-    
-    APPINE_LOG(@"State changing to active: %d", active);
+
+    BOOL changed = (state.isActive != active);
     state.isActive = active;
-    appine_apply_visual_state();
-    
+
+    if (changed) {
+        APPINE_LOG(@"State changing to active: %d", active);
+        appine_apply_visual_state();
+    }
+
     if (active) {
-        AppineTabItem *tab = appine_find_tab(state.activeTabId);
-        if (tab && tab.backend.view) {
-            APPINE_LOG(@"Forcing FirstResponder to backend view: %@", [tab.backend.view className]);
-            [state.hostWindow makeFirstResponder:tab.backend.view];
+        // 只要要求激活，就检查当前焦点是否在 Appine 的容器视图内
+        NSResponder *responder = state.hostWindow.firstResponder;
+        BOOL isAppineFocused = NO;
+        if ([responder isKindOfClass:[NSView class]]) {
+            NSView *v = (NSView *)responder;
+            while (v) {
+                if (v == state.containerView) {
+                    isAppineFocused = YES;
+                    break;
+                }
+                v = v.superview;
+            }
+        }
+        
+        // 如果焦点不在 Appine 内部（比如被 C-x 临时借给了 Emacs），则强制抢回焦点
+        if (!isAppineFocused) {
+            AppineTabItem *tab = appine_find_tab(state.activeTabId);
+            if (tab && tab.backend.view) {
+                NSView *focusTarget = appine_find_focus_target(tab.backend.view);
+                APPINE_LOG(@"Forcing FirstResponder to target view: %@", [focusTarget className]);
+                [state.hostWindow makeFirstResponder:focusTarget];
+            }
         }
     } else {
-        APPINE_LOG(@"Yielding focus. Current FirstResponder is: %@", [state.hostWindow.firstResponder className]);
+        if (changed) {
+            APPINE_LOG(@"Yielding focus. Current FirstResponder is: %@", [state.hostWindow.firstResponder className]);
+            // 把 macOS 的键盘焦点还给 Emacs
+            NSView *emacsView = appine_get_emacs_view();
+            if (emacsView) {
+                [state.hostWindow makeFirstResponder:emacsView];
+            }
+        }
     }
 }
 
@@ -573,7 +938,7 @@ int appine_core_open_file_in_rect(const char *path, int x, int y, int w, int h) 
     dispatch_async(dispatch_get_main_queue(), ^{
         appine_state().targetRect = NSMakeRect(x, y, w, h);
         appine_ensure_container();
-        
+
         id<AppineBackend> backend = appine_create_backend_for_file(filePath);
         if (backend) {
             appine_add_tab(backend);
@@ -660,8 +1025,26 @@ int appine_core_perform_action(const char *action_name) {
     dispatch_async(dispatch_get_main_queue(), ^{
         appine_set_active(YES);
         SEL sel = NSSelectorFromString([action stringByAppendingString:@":"]);
-        if (![NSApp sendAction:sel to:nil from:nil]) {
-            NSLog(@"[appine] action not handled: %@", action);
+
+        BOOL handled = NO;
+
+        // 1. 优先检查自定义 g_action_target 是否实现了该方法 (如 newTab:, openFile:, find:)
+        if (g_action_target && [g_action_target respondsToSelector:sel]) {
+            #pragma clang diagnostic push
+            #pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+            [g_action_target performSelector:sel withObject:nil];
+            #pragma clang diagnostic pop
+            handled = YES;
+        }
+        // 2. 否则发送给 macOS 响应链（处理标准的 copy:, paste: 等原生未被拦截的 action）
+        else if ([NSApp sendAction:sel to:nil from:nil]) {
+            handled = YES;
+        }
+
+        if (!handled) {
+            APPINE_LOG(@"[appine] action not handled: %@", action);
+        } else {
+            APPINE_LOG(@"[appine] action handled succ: %@", action);
         }
     });
     return 0;
@@ -670,10 +1053,91 @@ int appine_core_perform_action(const char *action_name) {
 int appine_core_close(void) {
     dispatch_async(dispatch_get_main_queue(), ^{
         AppineState *state = appine_state();
+
+        // 1. 先把焦点还给 Emacs
+        if (state.hostWindow) {
+            NSView *emacsView = appine_get_emacs_view();
+            if (emacsView) {
+                [state.hostWindow makeFirstResponder:emacsView];
+            }
+        }
+
+        // 2. 重置所有状态
+        state.isActive = NO;
+
+        // 3. 移除视图
         [state.containerView removeFromSuperview];
         state.containerView = nil;
+        state.toolbarView = nil;
+        state.toolbarStack = nil;
+        state.tabBarView = nil;
+        state.tabControl = nil;
+        state.contentHostView = nil;
+        state.inactiveOverlayView = nil;
+
+        // 4. 清空 tabs
         [state.tabs removeAllObjects];
         state.activeTabId = -1;
+
+        // 5. 解除 hostWindow 引用
+        state.hostWindow = nil;
+
+        APPINE_LOG(@"appine_core_close: all state reset, container removed.");
+    });
+    return 0;
+}
+
+// ===========================================================================
+// Web 专属控制 API
+// ===========================================================================
+int appine_core_web_go_forward(void) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        AppineState *state = appine_state();
+        AppineTabItem *active = appine_find_tab(state.activeTabId);
+
+        // 动态检查当前的 backend 是否实现了 goForward: 方法
+        if (active && [active.backend respondsToSelector:@selector(goForward:)]) {
+            #pragma clang diagnostic push
+            #pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+            [active.backend performSelector:@selector(goForward:) withObject:nil];
+            #pragma clang diagnostic pop
+            appine_restore_focus_if_active();
+        }
+    });
+    
+    return 0;
+}
+
+int appine_core_web_go_back(void) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        AppineState *state = appine_state();
+        AppineTabItem *active = appine_find_tab(state.activeTabId);
+
+        // 动态检查当前的 backend 是否实现了 goBack: 方法
+        if (active && [active.backend respondsToSelector:@selector(goBack:)]) {
+            #pragma clang diagnostic push
+            #pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+            [active.backend performSelector:@selector(goBack:) withObject:nil];
+            #pragma clang diagnostic pop
+            appine_restore_focus_if_active();
+        }
+    });
+    return 0;
+}
+
+int appine_core_web_reload(void) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        AppineState *state = appine_state();
+        AppineTabItem *active = appine_find_tab(state.activeTabId);
+
+        // 动态检查当前的 backend 是否实现了 reload: 方法
+        if (active && [active.backend respondsToSelector:@selector(reload:)]) {
+            #pragma clang diagnostic push
+            #pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+            [active.backend performSelector:@selector(reload:) withObject:nil];
+            #pragma clang diagnostic pop
+            appine_restore_focus_if_active();
+        }
     });
     return 0;
 }
