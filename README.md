@@ -20,8 +20,7 @@ You can open a browser, read PDFs, listen to music, and watch videos in Emacs. E
 - **Seamless Integration**: The native views automatically resize and move when you split or adjust Emacs windows.
 - **Tab Management**: Support for multiple embedded tabs, switching, and closing directly from Emacs.
 - **Org-mode Integration**: Use Appine to open links and files within Org files.
-- **Plugin Support**: You can now write some simple plugins for Appine's browser.
-
+- **Plugin Support**: You can now write some simple plugins for Appine's browser. Currently supported features include **Link Hints** for quick navigation and a **Selection Assistant** (which allows you to select content on a webpage to perform `org-capture`, search, translate, or even have a conversation with ChatGPT based on the selected content).
 
 
 ## 📖 Usage
@@ -55,6 +54,34 @@ https://github.com/user-attachments/assets/f63eff4e-754e-4d4f-b11c-aa9d3f982c67
 To quickly open links on web pages, I wrote a simple link-hints plugin for Appine's built-in browser. It works similarly to Vimium — pressing `f` will highlight the links on the page, and then pressing the corresponding key will quickly open the link on the current page, or pressing `q` to quit the link hints, as shown below:
 
 <img width="3024" height="1898" alt="Image" src="https://github.com/user-attachments/assets/2e86d223-0d5f-47a3-9e90-b3d3afa36c78" />
+
+### Built-in Browser Plugins
+
+To facilitate daily browser operations, Appine's browser comes with a built-in **Selection Assistant** plugin. When you select text content on a webpage, a floating toolbar will appear as shown below.
+
+<img width="1316" height="324" alt="Image" src="https://github.com/user-attachments/assets/c2c8068a-254f-4311-9534-7cb7f6a32a77" />
+
+- **Capture**: Captures the selected content along with the webpage link into your `inbox.org`.
+
+  You need to configure `org-capture-template`. An example is as follows:
+  ````
+  (setq org-capture-templates
+      `(("i" "Inbox" entry (file, (concat chaoswork/gtd-directory "inbox.org"))
+         "* TODO %?\n%i\nfrom: %a\n/Entered on/ %U")
+        ("c" "org-protocol-capture" entry (file ,(concat chaoswork/gtd-directory "inbox.org"))
+         "* TODO [[%:link][%:description]]\n\n %i" :immediate-finish t)))
+  ````
+  The shortcut key for `org-protocol-capture` here is set to `c`. If you prefer a different key, you can modify it in the settings.
+
+- **Search**: Searches for the selected content. The default search engine is Google, but you can configure it to use a different search engine.
+
+- **Translate**: Translates content using AI. You can customize the translation `system_prompt`.
+
+- **Ask AI**: Uses the selected content as context, allowing you to have a conversation with AI based on it.
+
+You can follow the steps below to configure the Selection Assistant and view conversation history:
+
+<img width="1378" height="1052" alt="Image" src="https://github.com/user-attachments/assets/1a12af27-f18f-4a38-b992-f4873c038806" />
 
 ### Opening PDFs and Other Documents
 
@@ -140,6 +167,14 @@ Appine uses Emacs Dynamic Modules to bridge C/Objective-C and Emacs Lisp.
 The project is still under continuous improvement. If you encounter any problems, feel free to open an issue.
 
 Support for Windows and Linux systems will be considered in the future. The main reason is that I currently don't have a Windows computer, and the Linux distribution I use doesn't have a GUI, which makes it impossible for me to debug the plugin at present. Moreover, unlike macOS, Windows and Linux lack native system-level rendering frameworks for web pages, PDFs, and Office files, requiring third-party libraries to implement, which often introduces instability. Cross-platform libraries like Qt are often too massive and too heavy for a small Emacs plugin. If you use Linux or Windows and really want to use browsers, PDFs, and other apps in Emacs, you can try the [EAF](https://github.com/emacs-eaf/emacs-application-framework) project.
+
+## ChangeLog
+
+- **v0.0.8**: Added the **Selection Assistant** plugin, which allows you to capture selected webpage content to `inbox.org`, translate, search, and chat with AI. `appine-open-url` is now smarter.
+- **v0.0.7**: Added browser plugin functionality, added a "Find" feature to the browser and PDF reader, and support for automatic plugin updates.
+- **v0.0.6**: You can now manipulate Appine Windows just like regular Buffers.
+- **v0.0.5**: `org-mode` integration.
+- **v0.0.4 and earlier**: Improvements to the browser, PDF reader, and Quick Look features.
 
 ## 📄 License
 

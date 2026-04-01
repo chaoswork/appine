@@ -1,5 +1,14 @@
 CC = clang
 
+# ---------------------------------------------------------------------------
+# 路径配置
+# ---------------------------------------------------------------------------
+SRC_CORE_DIR    = src/core
+SRC_BACKEND_DIR = src/backends
+
+# ---------------------------------------------------------------------------
+# EMACS_INCLUDE_DIR setup
+# ---------------------------------------------------------------------------
 # 候选搜索路径（按优先级排列）
 EMACS_HEADER_SEARCH_PATHS = \
     /Applications/Emacs.app/Contents/Resources/include \
@@ -28,25 +37,43 @@ Usage example: make EMACS_INCLUDE_DIR=/path/to/your/emacs/include)
 endif
 
 
-CFLAGS  = -Wall -O2 -fPIC -Wextra -std=c11 -fobjc-arc -Wno-unused-parameter \
-           -I"$(EMACS_INCLUDE_DIR)"
+# ---------------------------------------------------------------------------
+# 编译选项
+# ---------------------------------------------------------------------------
+CFLAGS = -Wall -O2 -fPIC -Wextra -std=c11 -fobjc-arc -Wno-unused-parameter \
+         -I"$(EMACS_INCLUDE_DIR)" \
+         -I"$(SRC_CORE_DIR)" \
+         -I"$(SRC_BACKEND_DIR)"
+
 LDFLAGS = -dynamiclib \
-           -framework Cocoa \
-           -framework WebKit \
-           -framework Quartz \
-           -framework UniformTypeIdentifiers
+          -framework Cocoa \
+          -framework WebKit \
+          -framework Quartz \
+          -framework UniformTypeIdentifiers
 
 TARGET = appine-module.dylib
-SRCS   = module.c appine_core.m backend_web.m backend_pdf.m backend_quicklook.m
 
 # 同时编译 Intel 和 Apple Silicon 架构
 ARCH_FLAGS = -arch x86_64 -arch arm64
 
+# ---------------------------------------------------------------------------
+# 源文件（按新目录结构）
+# ---------------------------------------------------------------------------
+SRCS = $(SRC_CORE_DIR)/module.c \
+       $(SRC_CORE_DIR)/appine_core.m \
+       $(SRC_BACKEND_DIR)/backend_web.m \
+       $(SRC_BACKEND_DIR)/backend_pdf.m \
+       $(SRC_BACKEND_DIR)/backend_quicklook.m
+
+# ---------------------------------------------------------------------------
+# 构建规则
+# ---------------------------------------------------------------------------
+.PHONY: all clean
+
 all: $(TARGET)
 
 $(TARGET): $(SRCS)
-	@echo "Using emacs-module.h from: $(EMACS_INCLUDE_DIR)"
 	$(CC) $(CFLAGS) $(ARCH_FLAGS) $(LDFLAGS) -o $@ $(SRCS)
 
 clean:
-	rm -f $(TARGET)
+	rm -rf $(TARGET)

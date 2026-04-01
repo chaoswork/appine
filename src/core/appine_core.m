@@ -241,7 +241,7 @@ static void appine_restore_focus_if_active(void) {
         if (active && active.backend && active.backend.view) {
             // 查找真正的焦点目标，而不是把焦点给 NSView 容器
             NSView *focusTarget = appine_find_focus_target(active.backend.view);
-            APPINE_LOG(@"Restoring focus. Backend view: %@, Focus target: %@", 
+            APPINE_LOG(@"Restoring focus. Backend view: %@, Focus target: %@",
                        [active.backend.view className], [focusTarget className]);
             [state.hostWindow makeFirstResponder:focusTarget];
         }
@@ -416,11 +416,11 @@ static void appine_add_tab(id<AppineBackend> backend);
 - (void)find:(id)sender {
     (void)sender;
     appine_set_active(YES);
-    
+
     // 直接调用当前活跃 backend 的 toggleFindBar
     AppineState *state = appine_state();
     AppineTabItem *active = appine_find_tab(state.activeTabId);
-    
+
     if (active && active.backend &&
         [active.backend respondsToSelector:@selector(toggleFindBar)]) {
         [active.backend toggleFindBar];
@@ -491,10 +491,10 @@ static void appine_add_tab(id<AppineBackend> backend);
 - (void)findNext:(id)sender {
     (void)sender;
     appine_set_active(YES);
-    
+
     AppineState *state = appine_state();
     AppineTabItem *active = appine_find_tab(state.activeTabId);
-    
+
     // 注意这里是 findNext: 带冒号
     if (active && active.backend &&
         [active.backend respondsToSelector:@selector(findNext:)]) {
@@ -509,10 +509,10 @@ static void appine_add_tab(id<AppineBackend> backend);
 - (void)findPrevious:(id)sender {
     (void)sender;
     appine_set_active(YES);
-    
+
     AppineState *state = appine_state();
     AppineTabItem *active = appine_find_tab(state.activeTabId);
-    
+
     // 注意这里是 findPrevious: 带冒号
     if (active && active.backend &&
         [active.backend respondsToSelector:@selector(findPrevious:)]) {
@@ -563,7 +563,7 @@ static void appine_setup_global_event_monitor(void) {
                 AppineState *state = appine_state();
                 if (!state.containerView || !state.isActive || !state.hostWindow) {
                     return event;
-                }                
+                }
                 if (state.isActive && state.hostWindow && state.hostWindow.firstResponder) {
                     NSResponder *responder = state.hostWindow.firstResponder;
                     BOOL isAppineFocused = NO;
@@ -881,7 +881,7 @@ static void appine_set_active(BOOL active) {
                 v = v.superview;
             }
         }
-        
+
         // 如果焦点不在 Appine 内部（比如被 C-x 临时借给了 Emacs），则强制抢回焦点
         if (!isAppineFocused) {
             AppineTabItem *tab = appine_find_tab(state.activeTabId);
@@ -924,15 +924,74 @@ void appine_core_add_web_tab(NSString *urlString) {
 #pragma mark - C API Exports
 
 int appine_core_open_web_in_rect(const char *url, int x, int y, int w, int h) {
-    NSString *urlString = url ? [NSString stringWithUTF8String:url] : @"https://google.com";
+    NSString *initialUrlString = url ? [NSString stringWithUTF8String:url] : @"https://google.com";
+
     dispatch_async(dispatch_get_main_queue(), ^{
         appine_state().targetRect = NSMakeRect(x, y, w, h);
         appine_ensure_container();
-        appine_add_tab(appine_create_web_backend(urlString));
+
+        // 去除首尾空格
+        NSString *urlString = [initialUrlString stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        NSURL *nsUrl = nil;
+
+        // 【guess 1】：如果是绝对路径，直接转为 file:// 协议
+        if ([urlString hasPrefix:@"/"] || [urlString hasPrefix:@"~"]) {
+            // 自动将 ~/Downloads 展开为 /Users/username/Downloads
+            NSString *expandedPath = [urlString stringByExpandingTildeInPath];
+            // 使用 fileURLWithPath 自动处理路径中的空格和特殊字符（比手动拼 file:// 更安全）
+            nsUrl = [NSURL fileURLWithPath:expandedPath];
+            urlString = nsUrl.absoluteString; // 同步更新 urlString
+        } else {
+            nsUrl = [NSURL URLWithString:urlString];
+        }
+
+        // 【guess 2】：如果没有协议头，或者是无效 URL（比如包含空格导致 nsUrl 为 nil）
+        if (!nsUrl || !nsUrl.scheme) {
+            BOOL hasSpace = [urlString containsString:@" "];
+            BOOL hasDot = [urlString containsString:@"."];
+            BOOL isLocalhost = [urlString hasPrefix:@"localhost"];
+
+            if (hasSpace || (!hasDot && !isLocalhost)) {
+                // 包含空格，或者没有点号（且不是 localhost），视为搜索引擎 Query
+                NSString *encodedQuery = [urlString stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLQueryAllowedCharacterSet]];
+                urlString = [NSString stringWithFormat:@"https://www.google.com/search?q=%@", encodedQuery];
+            } else {
+                // 类似 "github.com" 的域名。
+                // 默认补全 http://，现代网站会自动 301 跳转到 https://，而纯 http 网站也能正常打开
+                urlString = [@"http://" stringByAppendingString:urlString];
+            }
+            nsUrl = [NSURL URLWithString:urlString];
+        }
+
+        id<AppineBackend> backend = nil;
+
+        // 1. 如果是 file:// 协议，复用已有的文件路由逻辑
+        if ([nsUrl.scheme caseInsensitiveCompare:@"file"] == NSOrderedSame) {
+            backend = appine_create_backend_for_file(nsUrl.path);
+        }
+        else {
+            // 手动判断常见的 Web 协议，避免引入 WebKit 头文件导致耦合
+            NSArray *webSchemes = @[@"http", @"https", @"data", @"about", @"blob"];
+
+            // 2. 如果是 WebKit 支持的常规协议
+            if ([webSchemes containsObject:nsUrl.scheme.lowercaseString]) {
+                backend = appine_create_web_backend(urlString);
+            }
+            // 3. 兜底：交给 macOS 系统打开（如 mailto:, tg:// 等）
+            else {
+                APPINE_LOG(@"[Appine] WebKit 不支持该协议 '%@'，交由 macOS 系统打开", nsUrl.scheme);
+                [[NSWorkspace sharedWorkspace] openURL:nsUrl];
+            }
+        }
+
+        if (backend) {
+            appine_add_tab(backend);
+        }
     });
     return 0;
 }
 
+// TODO: delete this function
 int appine_core_open_file_in_rect(const char *path, int x, int y, int w, int h) {
     NSString *filePath = path ? [NSString stringWithUTF8String:path] : @"";
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -1104,7 +1163,7 @@ int appine_core_web_go_forward(void) {
             appine_restore_focus_if_active();
         }
     });
-    
+
     return 0;
 }
 

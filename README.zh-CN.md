@@ -6,10 +6,7 @@
 ![OS: macOS](https://img.shields.io/badge/OS-macOS-lightgrey.svg)
 ![Emacs: 28.1+](https://img.shields.io/badge/Emacs-28.1+-purple.svg)
 
-**Appine** 的名字源自 “App in Emacs”，它是一个 Emacs 插件，采用动态模块允许你将 macOS 原生视图（WebKit、PDFKit、Quick look PreviewView 等）直接嵌入到 Emacs 窗口中。
-
-你可以在 Emacs 中打开浏览器、阅读 PDF、听音乐、看视频。无需离开 Emacs，即可享受 macOS 原生渲染、平滑滚动和硬件加速的全部威力！
-
+**Appine** 的名字源自 “App in Emacs”，它是一个 Emacs 插件，可以让你在 Emacs 中打开 MacOS 原生的浏览器、PDF 阅读器，还可以听音乐、看视频。无需离开 Emacs，即可享受 macOS 原生渲染、平滑滚动和硬件加速的全部威力！
 
 ## ✨ 特性 (Features)
 
@@ -20,7 +17,7 @@
 - **无缝集成**：当你分割或调整 Emacs 窗口大小时，原生视图会自动调整大小和移动。
 - **标签页管理**：支持多个嵌入的标签页，可以直接在 Emacs 中进行切换和关闭。
 - **Org-mode集成**：可以使用 Appine 打开 Org 文件中的链接和文件。
-- **插件支持**: 现在可以给 Appine 的浏览器写一些简单的插件了。
+- **插件支持**: 现在可以给 Appine 的浏览器写一些简单的插件了。目前支持 link hints 快速导航和选中小助手（可以选中网页上的内容进行 `org-capture`, 搜索，翻译，甚至可以根据选中内容和 ChatGPT 对话）。
 
 ## 📖 使用方法 (Usage)
 
@@ -51,7 +48,32 @@ https://github.com/user-attachments/assets/a7eaf65a-da9b-45ee-9b24-ca835379fc34
 
 https://github.com/user-attachments/assets/f63eff4e-754e-4d4f-b11c-aa9d3f982c67
 
-为了快速打开网页上的链接，我给 Appine 内部的浏览器写了个简单的 link-hints 插件，可以类似 Vimium 那样，按 `f` 就可以标注出网页上链接，然后按相应的键就可以快速打开当前网页中的链接，或者按 `q` 退出 link-hints, 如下图： 
+### 内置浏览器插件
+
+为了方便在浏览器的日常操作，Appine 的浏览器内置了 Selection Assistant 插件。当你选中网页上的文字内容时，会出现如下的悬浮按钮。
+
+<img width="1316" height="324" alt="Image" src="https://github.com/user-attachments/assets/c2c8068a-254f-4311-9534-7cb7f6a32a77" />
+
+- Capture: 可以将选中内容和网页链接 capture 到你的 inbox.org 当中。
+
+  需要配置 `org-capture-template`, 一个示例如下：
+  ```
+  (setq org-capture-templates
+      `(("i" "Inbox" entry (file, (concat chaoswork/gtd-directory "inbox.org"))
+         "* TODO %?\n%i\nfrom: %a\n/Entered on/ %U")
+        ("c" "org-protocol-capture" entry (file ,(concat chaoswork/gtd-directory "inbox.org"))
+         "* TODO [[%:link][%:description]]\n\n %i" :immediate-finish t)))  
+  ```
+  这里的 org-protocal-capture 快捷键设置为 `c`，如果你喜欢其他键，可以在设置里修改。
+- Search：搜索选中内容，默认是 Google，可以自己配置别的修改引擎。
+- Translate：通过 AI 来翻译内容，可以自己配置翻译的 system_prompt。
+- Ask AI: 将选中内容作为上下文，然后就可以开心的和 AI 对话了。
+
+可以通过如下的步骤来设置 Selection Assistant 和查看历史对话：
+
+<img width="1378" height="1052" alt="Image" src="https://github.com/user-attachments/assets/1a12af27-f18f-4a38-b992-f4873c038806" />
+
+为了快速打开网页上的链接，浏览器内置了一个简单的 link-hints 插件，可以类似 Vimium 那样，按 `f` 就可以标注出网页上链接，然后按相应的键就可以快速打开当前网页中的链接，或者按 `q` 退出 link-hints, 如下图： 
 
 <img width="3024" height="1898" alt="Image" src="https://github.com/user-attachments/assets/2e86d223-0d5f-47a3-9e90-b3d3afa36c78" />
 
@@ -137,6 +159,14 @@ Appine 使用 Emacs 动态模块来桥接 C/Objective-C 和 Emacs Lisp。
 目前项目还在持续完善中，如果使用有问题，欢迎提 issue。
 
 对于 Windows 和 Linux 系统，会在未来考虑支持。主要是我目前没有 Windows 的电脑，而使用的 Linux 并没有可视化界面，这让我目前没法调试插件。而且 Windows 和 Linux 不像 macOS 那样系统原生自带网页、PDF 和 Office 文件的渲染框架，需要借助于第三方库来实现，这往往会带来不稳定的问题。有些跨平台的库比如 Qt 等往往都特别庞大，对于一个小小的 Emacs 插件来说实在是过于笨重。如果特别想在 Emacs 中使用浏览器、PDF 等 App，可以尝试 [EAF](https://github.com/emacs-eaf/emacs-application-framework) 项目。
+
+## ChangeLog
+
+- v0.0.8: 增加了 Selection Assistant 插件，可以将选中内容 Capture 网页到 inbox.org, 翻译，搜索，与 AI 对话。`appine-open-url` 现在更加智能了。
+- v0.0.7: 增加了浏览器插件功能，给浏览器和PDF阅读器添加了“查找”功能，并且支持插件自动更新。
+- v0.0.6: 可以像操纵普通 Buffer 那样操纵 Appine Window
+- v0.0.5: org-mode 集成。
+- v0.0.4 及之前: 完善浏览器、PDF 阅读器、Quick Look 功能。
 
 ## 📄 许可证 (License)
 

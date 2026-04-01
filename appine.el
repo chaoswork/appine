@@ -569,12 +569,9 @@ on the right and open the default usage.html help page."
 
 ;;;###autoload
 (defun appine-open-url (url)
-  "Split window on the right and open URL in a new embedded native web tab."
+  "Split window on the right and open URL in a new embedded native tab."
   (interactive "sURL: ")
-  (unless (or (string-prefix-p "http://" url t)
-              (string-prefix-p "https://" url t))
-    (setq url (concat "https://" url)))
-  
+  ;; 前缀判断均交给 appine_core
   (pcase-let* ((`(,x ,y ,w ,h) (appine--rect)))
     (appine-native-open-web-in-rect url x y w h)
     (let ((win (appine--get-active-window-for-buffer appine--buffer-name)))
@@ -583,13 +580,11 @@ on the right and open the default usage.html help page."
 
 ;;;###autoload
 (defun appine-open-file (path)
-  "Split window on the right and open PATH in a new embedded native Quicklook tab."
+  "Split window on the right and open PATH in a new embedded native tab."
   (interactive "fFile: ")
-  (pcase-let* ((`(,x ,y ,w ,h) (appine--rect)))
-    (appine-native-open-file-in-rect (expand-file-name path) x y w h)
-    (let ((win (appine--get-active-window-for-buffer appine--buffer-name)))
-      (when win (select-window win)))
-    (appine--set-active t)))
+  ;; Elisp 只负责把相对路径或 ~ 展开为绝对路径，然后转成 file:// 协议传给统一入口
+  (let ((file-url (concat "file://" (expand-file-name path))))
+    (appine-open-url file-url))) ; 直接复用 appine-open-url
 
 (defun appine-close ()
   "Close all embedded native views and delete host window when possible."

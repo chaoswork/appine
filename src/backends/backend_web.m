@@ -220,6 +220,29 @@ extern void appine_core_add_web_tab(NSString *urlString);
     // 配置 WebView 的持久化与伪装
     // ==========================================
     WKWebViewConfiguration *config = [[WKWebViewConfiguration alloc] init];
+    // 从 NSUserDefaults 读取全局配置
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    NSString *cfgStr = [defaults stringForKey:@"ap_cfg"] ?: @"{}";
+    NSString *sessStr = [defaults stringForKey:@"ap_sess"] ?: @"[]";
+    
+    // 包装成 JSON 字典
+    NSDictionary *storageDict = @{
+        @"ap_cfg": cfgStr,
+        @"ap_sess": sessStr
+    };
+    NSData *jsonData = [NSJSONSerialization dataWithJSONObject:storageDict options:0 error:nil];
+    NSString *jsonString = [[NSString alloc] initWithData:jsonData encoding:NSUTF8StringEncoding];
+    
+    // 注入到全局变量 window.__APPINE_STORAGE__ 中 (注意注入时机是 AtDocumentStart)
+    NSString *injectStorageJS = [NSString stringWithFormat:@"window.__APPINE_STORAGE__ = %@;", jsonString];
+    WKUserScript *storageScript = [[WKUserScript alloc] initWithSource:injectStorageJS
+                                                         injectionTime:WKUserScriptInjectionTimeAtDocumentStart
+                                                      forMainFrameOnly:NO];
+    [config.userContentController addUserScript:storageScript];
+    
+    // 注册 JS 消息处理器，用于接收保存请求
+    // 注意：你的 ViewController 需要实现 WKScriptMessageHandler 协议
+    [config.userContentController addScriptMessageHandler:self name:@"appineSaveData"];
     // 1. 注册消息通道
     [config.userContentController addScriptMessageHandler:self name:@"appineLog"];
 
@@ -261,10 +284,10 @@ extern void appine_core_add_web_tab(NSString *urlString);
         appineDir = [@"~/.emacs.d/straight/repos/appine" stringByExpandingTildeInPath];
         APPINE_LOG(@"[Warning] 无法动态获取 dylib 路径，使用默认路径: %@", appineDir);
     }
-    NSString *pluginsDir = [appineDir stringByAppendingPathComponent:@"plugins"];
-    // NSString *appineDir = [@"~/git-local/appine-dev" stringByExpandingTildeInPath];
+    NSString *extensionDir = [appineDir stringByAppendingPathComponent:@"browser-extension"];
+    NSString *pluginsDir = [extensionDir stringByAppendingPathComponent:@"plugins"];
     // 注入全局工具库 (AppineUtils)
-    NSString *utilsPath = [appineDir stringByAppendingPathComponent:@"utils.js"];
+    NSString *utilsPath = [extensionDir stringByAppendingPathComponent:@"utils.js"];
     NSString *utilsJS = [NSString stringWithContentsOfFile:utilsPath encoding:NSUTF8StringEncoding error:nil];
     if (utilsJS) {
         // 注意：这里使用 WKUserScriptInjectionTimeAtDocumentStart，确保它最早可用
@@ -275,45 +298,46 @@ extern void appine_core_add_web_tab(NSString *urlString);
     } else {
         APPINE_LOG(@"[Appine-Warning] 未找到 utils.js");
     }
-
-
-    // 1. 读取 plugins-loader.js
-    NSString *loaderPath = [appineDir stringByAppendingPathComponent:@"plugins-loader.js"];
-    NSString *loaderJS = [NSString stringWithContentsOfFile:loaderPath encoding:NSUTF8StringEncoding error:nil];
-
-    if (loaderJS) {
-        loaderJS = [loaderJS stringByReplacingOccurrencesOfString:@"export default PluginLoader;" withString:@"window.PluginLoader = PluginLoader;"];
-
-        // 将 loader 单独作为一个 Script 注入
-        WKUserScript *loaderScript = [[WKUserScript alloc] initWithSource:loaderJS
+    // 1. 读取并注入 content.js (作为基础环境)
+    NSString *contentJSPath = [extensionDir stringByAppendingPathComponent:@"content.js"];
+    NSString *contentJS = [NSString stringWithContentsOfFile:contentJSPath encoding:NSUTF8StringEncoding error:nil];
+    
+    if (contentJS) {
+        // 将 content.js 作为一个 Script 注入
+        WKUserScript *loaderScript = [[WKUserScript alloc] initWithSource:contentJS
                                                             injectionTime:WKUserScriptInjectionTimeAtDocumentEnd
                                                          forMainFrameOnly:YES];
         [config.userContentController addUserScript:loaderScript];
-
+    
+        // 2. 遍历 plugins 目录，注入各个插件
         NSArray *plugins = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:pluginsDir error:nil];
         for (NSString *pluginName in plugins) {
-            if ([pluginName hasPrefix:@"."]) continue;
-
+            if ([pluginName hasPrefix:@"."]) continue; // 忽略隐藏文件
+    
             NSString *pluginIndexPath = [NSString stringWithFormat:@"%@/%@/index.js", pluginsDir, pluginName];
             NSString *pluginJS = [NSString stringWithContentsOfFile:pluginIndexPath encoding:NSUTF8StringEncoding error:nil];
-
+    
             if (pluginJS) {
-                // 原生端也打印一下，方便确认读取到了文件
-                APPINE_LOG(@"[Appine-Plugin] 准备注入插件: %@", pluginName);
-
+                NSLog(@"[Appine-Plugin] 准备注入插件: %@", pluginName);
+    
                 NSMutableString *pluginInjectionJS = [NSMutableString string];
+                
+                // 【核心】替换 export default 为 return，包装成 IIFE
                 NSString *modifiedJS = [pluginJS stringByReplacingOccurrencesOfString:@"export default" withString:@"return"];
-
+    
                 [pluginInjectionJS appendFormat:@"{\n"];
                 [pluginInjectionJS appendFormat:@"  try {\n"];
                 [pluginInjectionJS appendFormat:@"    console.log('[Appine-Plugin] ⏳ 开始解析并执行插件: %@');\n", pluginName];
                 [pluginInjectionJS appendFormat:@"    const pluginObj = (function() {\n%@\n    })();\n", modifiedJS];
+                
+                // 调用 content.js 中暴露的 window.PluginLoader
                 [pluginInjectionJS appendFormat:@"    window.PluginLoader.register(pluginObj);\n"];
+                
                 [pluginInjectionJS appendFormat:@"  } catch(e) {\n"];
                 [pluginInjectionJS appendFormat:@"    console.log('[Appine-Plugin] ❌ 执行插件 %@ 失败: ' + (e.message || e));\n", pluginName];
                 [pluginInjectionJS appendFormat:@"  }\n"];
                 [pluginInjectionJS appendFormat:@"}\n"];
-
+    
                 // 为每一个插件单独创建一个 WKUserScript
                 WKUserScript *pluginScript = [[WKUserScript alloc] initWithSource:pluginInjectionJS
                                                                     injectionTime:WKUserScriptInjectionTimeAtDocumentEnd
@@ -322,7 +346,7 @@ extern void appine_core_add_web_tab(NSString *urlString);
             }
         }
     } else {
-        APPINE_LOG(@"[Appine-Plugin] ⚠️ 未找到 plugins-loader.js");
+        NSLog(@"[Appine-Plugin] ⚠️ 未找到 content.js");
     }
 
     // 1. 强制使用系统的默认持久化数据存储（保存 Cookie、LocalStorage、Session 等）
@@ -777,6 +801,21 @@ extern void appine_core_add_web_tab(NSString *urlString);
 #pragma mark - WKNavigationDelegate (Downloads)
 
 - (void)webView:(WKWebView *)webView decidePolicyForNavigationAction:(WKNavigationAction *)navigationAction decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler {
+    NSURL *url = navigationAction.request.URL;
+    
+    // 1. 拦截 org-protocol 协议
+    if ([url.scheme isEqualToString:@"org-protocol"]) {
+        APPINE_LOG(@"[Appine-Web] 拦截到 org-protocol: %@", url.absoluteString);
+        
+        // 2. 阻止 WKWebView 的默认加载行为，防止静默失败
+        decisionHandler(WKNavigationActionPolicyCancel);
+        
+        // 3. 通过 macOS 系统 API 抛出 URL。
+        // 因为当前 Emacs 已经运行且（通常）注册了该协议，系统会瞬间将其路由回 Emacs 内部触发 Capture。
+        [[NSWorkspace sharedWorkspace] openURL:url];
+        return;
+    }
+
     if (@available(macOS 11.3, *)) {
         if (navigationAction.shouldPerformDownload) {
             decisionHandler(WKNavigationActionPolicyDownload);
@@ -921,8 +960,25 @@ extern void appine_core_add_web_tab(NSString *urlString);
 - (void)userContentController:(WKUserContentController *)userContentController didReceiveScriptMessage:(WKScriptMessage *)message {
     if ([message.name isEqualToString:@"appineLog"]) {
         APPINE_LOG(@"[Appine-JS] %@", message.body);
+    }    
+    // 拦截 JS 发来的保存请求
+    else if ([message.name isEqualToString:@"appineSaveData"]) {
+        NSDictionary *body = message.body;
+        NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+        
+        if (body[@"ap_cfg"]) {
+            [defaults setObject:body[@"ap_cfg"] forKey:@"ap_cfg"];
+        }
+        if (body[@"ap_sess"]) {
+            [defaults setObject:body[@"ap_sess"] forKey:@"ap_sess"];
+        }
+        
+        // 同步到磁盘
+        [defaults synchronize];
+        NSLog(@"[Appine-Plugin] ✅ 全局配置已保存到 NSUserDefaults");
     }
 }
+
 
 #pragma mark - AppineBackend Protocol
 
@@ -931,12 +987,24 @@ extern void appine_core_add_web_tab(NSString *urlString);
     return self.containerView;
 }
 
-- (void)loadURL:(NSString *)url {
-    NSURL *u = [NSURL URLWithString:url];
-    if (u) {
-        [self.webView loadRequest:[NSURLRequest requestWithURL:u]];
+- (void)loadURL:(NSString *)urlString {
+    if (!urlString || urlString.length == 0) return;
+    
+    NSURL *url = [NSURL URLWithString:urlString];
+    if (!url) return;
+
+    // 区分本地文件和网络请求，解决 WKWebView 沙盒权限问题
+    if (url.isFileURL) {
+        // 授予读取当前文件所在目录的权限，这样本地 HTML 才能加载同目录的 CSS/JS/图片
+        NSURL *readAccessUrl = [url URLByDeletingLastPathComponent];
+        [self.webView loadFileURL:url allowingReadAccessToURL:readAccessUrl];
+    } else {
+        // 常规网络请求
+        NSURLRequest *request = [NSURLRequest requestWithURL:url];
+        [self.webView loadRequest:request];
     }
 }
+
 
 @end
 
