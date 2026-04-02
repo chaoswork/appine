@@ -51,10 +51,6 @@ A video demonstrating Open Web Page.
 
 https://github.com/user-attachments/assets/f63eff4e-754e-4d4f-b11c-aa9d3f982c67
 
-To quickly open links on web pages, I wrote a simple link-hints plugin for Appine's built-in browser. It works similarly to Vimium — pressing `f` will highlight the links on the page, and then pressing the corresponding key will quickly open the link on the current page, or pressing `q` to quit the link hints, as shown below:
-
-<img width="3024" height="1898" alt="Image" src="https://github.com/user-attachments/assets/2e86d223-0d5f-47a3-9e90-b3d3afa36c78" />
-
 ### Built-in Browser Plugins
 
 To facilitate daily browser operations, Appine's browser comes with a built-in **Selection Assistant** plugin. When you select text content on a webpage, a floating toolbar will appear as shown below.
@@ -82,6 +78,11 @@ To facilitate daily browser operations, Appine's browser comes with a built-in *
 You can follow the steps below to configure the Selection Assistant and view conversation history:
 
 <img width="1378" height="1052" alt="Image" src="https://github.com/user-attachments/assets/1a12af27-f18f-4a38-b992-f4873c038806" />
+
+To quickly open links on web pages, I wrote a simple link-hints plugin for Appine's built-in browser. It works similarly to Vimium — pressing `f` will highlight the links on the page, and then pressing the corresponding key will quickly open the link on the current page, or pressing `q` to quit the link hints, as shown below:
+
+<img width="3024" height="1898" alt="Image" src="https://github.com/user-attachments/assets/2e86d223-0d5f-47a3-9e90-b3d3afa36c78" />
+
 
 ### Opening PDFs and Other Documents
 
