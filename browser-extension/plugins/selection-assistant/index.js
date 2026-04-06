@@ -161,18 +161,24 @@ const posCard = (id) => {
         t = window.scrollY + rect.top - spaceNeeded;
       }
     } else {
-      // 非输入框场景：优先在选区上方弹出
-      l = Math.max(0, window.scrollX + curRect.left);
-      t = window.scrollY + curRect.top - c.offsetHeight - 10;
+      // 按 rect 选择  
+      // l = Math.max(0, window.scrollX + curRect.left);
+      // t = window.scrollY + curRect.bottom + 10;
+      // if (l + c.offsetWidth > window.scrollX + window.innerWidth) l = Math.max(0, window.scrollX + window.innerWidth - c.offsetWidth - 20);
+      // if (t + c.offsetHeight > window.scrollY + window.innerHeight) t = Math.max(0, window.scrollY + curRect.top - c.offsetHeight - 10);
+      // 非输入框场景：优先在离鼠标近的地方弹出（鼠标右下方）
+      l = mouseX - 100; 
+      t = mouseY + 15; 
+      // 边界检查：如果右侧超出屏幕，放到鼠标左侧
+      if (l + c.offsetWidth > window.scrollX + window.innerWidth) {
+        l = mouseX - c.offsetWidth - 15;
+        if (l < window.scrollX) l = window.scrollX + 10; // 保底防止左侧出界
+      }
 
-      if (t < window.scrollY) { // 上方放不下
-        t = window.scrollY + curRect.top;
-        l = window.scrollX + curRect.right + 15; // 放到选区右侧
-
-        if (l + c.offsetWidth > window.scrollX + window.innerWidth) { // 右侧太窄
-          c.style.flexDirection = 'column'; // 改为竖排
-          l = window.scrollX + window.innerWidth - c.offsetWidth - 10;
-        }
+      // 边界检查：如果下方超出屏幕，放到鼠标上方
+      if (t + c.offsetHeight > window.scrollY + window.innerHeight) {
+        t = mouseY - c.offsetHeight - 15;
+        if (t < window.scrollY) t = window.scrollY + 10; // 保底防止上方出界
       }
     }
     c.style.left = l + 'px'; c.style.top = t + 'px';
@@ -350,6 +356,9 @@ export default {
 
     api.on('mouseup', e => {
       if(['ap-act','ap-trans','ap-pop','ap-side','ap-set','ap-float'].some(id=>document.getElementById(id)?.contains(e.target))) return;
+      // 记录鼠标相对于整个文档的坐标
+      mouseX = e.pageX;
+      mouseY = e.pageY;
       setTimeout(() => {
         const sel = window.getSelection(), t = sel.toString().trim();
         if(t) {
