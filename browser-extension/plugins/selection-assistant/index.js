@@ -1,5 +1,6 @@
 // Selection Assistant v0.8
-let api = null, curText = '', curRect = null, abortCtrl = null, clickHandler = null;
+let api = null, curText = '', curRect = null, abortCtrl = null, clickHandler = null, hideTimer = null;
+
 // 可配置项
 let cfg = { url: 'https://api.openai.com/v1', key: '', models: ['gpt-3.5-turbo', 'gpt-4o', 'deepseek-reasoner'], trans: 'gpt-3.5-turbo', trans_system_prompt: 'Translate to Chinese. Only output translation.', enableTrans: true, enableCapture: true, captureKey: 'c', enableSearch: true, searchUrl: 'https://www.google.com/search?q=' };
 
@@ -11,11 +12,11 @@ const iEdit = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" strok
 const iRetry = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2v6h-6M3 12a9 9 0 1 0 2.6-6.4L2 8"/></svg>`;
 const iMore = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>`;
 
-const loadData = async () => { 
-  try { 
+const loadData = async () => {
+  try {
     let d = null;
     if (api.getStorage) d = await api.getStorage(['ap_cfg', 'ap_sess']);
-    
+
     if (d && (d.ap_cfg || d.ap_sess)) {
       if (d.ap_cfg) Object.assign(cfg, JSON.parse(d.ap_cfg));
       if (d.ap_sess) sessions = JSON.parse(d.ap_sess);
@@ -23,15 +24,15 @@ const loadData = async () => {
       if (window.__APPINE_STORAGE__.ap_cfg) Object.assign(cfg, JSON.parse(window.__APPINE_STORAGE__.ap_cfg));
       if (window.__APPINE_STORAGE__.ap_sess) sessions = JSON.parse(window.__APPINE_STORAGE__.ap_sess);
     } else {
-      Object.assign(cfg, JSON.parse(localStorage.getItem('ap_cfg')||'{}')); 
-      sessions = JSON.parse(localStorage.getItem('ap_sess')||'[]'); 
+      Object.assign(cfg, JSON.parse(localStorage.getItem('ap_cfg')||'{}'));
+      sessions = JSON.parse(localStorage.getItem('ap_sess')||'[]');
     }
   } catch(e){
     console.error('[Appine-Debug] ❌ loadData 报错:', e);
-  } 
+  }
 };
 
-const saveData = () => { 
+const saveData = () => {
   const c = JSON.stringify(cfg), s = JSON.stringify(sessions.slice(0,20));
   try {
     if (api.setStorage) {
@@ -39,9 +40,9 @@ const saveData = () => {
     }
     if (window.webkit?.messageHandlers?.appineSaveData) {
       window.webkit.messageHandlers.appineSaveData.postMessage({ ap_cfg: c, ap_sess: s });
-      window.__APPINE_STORAGE__ = { ap_cfg: c, ap_sess: s }; 
+      window.__APPINE_STORAGE__ = { ap_cfg: c, ap_sess: s };
     }
-    localStorage.setItem('ap_cfg', c); localStorage.setItem('ap_sess', s); 
+    localStorage.setItem('ap_cfg', c); localStorage.setItem('ap_sess', s);
   } catch(e){}
 };
 
@@ -82,7 +83,7 @@ function initUI() {
   const inpStyle = "width:100%;padding:8px;box-sizing:border-box;border:1px solid #dadce0;border-radius:4px;font-size:14px;color:#333;outline:none;";
   const inpWrap = (lbl, id, placeholder, type="text") => `<div style="margin-bottom:12px"><div style="font-size:12px;color:#5f6368;margin-bottom:4px">${lbl}</div><input id="${id}" type="${type}" placeholder="${placeholder}" style="${inpStyle}"></div>`;
   const secTitle = (t) => `<div style="font-size:14px;font-weight:bold;color:#1a73e8;margin:16px 0 8px;border-bottom:1px solid #eee;padding-bottom:4px">${t}</div>`;
-  
+
   // 设置面板也加上 pointer-events:auto !important;
   document.body.insertAdjacentHTML('beforeend', `
     <div id="ap-act" class="ap-card" style="padding:6px;flex-direction:row;gap:4px"></div>
@@ -95,7 +96,7 @@ function initUI() {
       ${inpWrap('Base URL', 'cfg-url', 'https://api.openai.com/v1')}
       ${inpWrap('API Key', 'cfg-key', 'sk-...', 'password')}
       ${inpWrap('Chat Models (comma separated)', 'cfg-mods', 'gpt-3.5-turbo, gpt-4o')}
-      
+
       ${secTitle('Translation')}
       <label style="display:flex;align-items:center;font-size:13px;color:#333;margin-bottom:8px;cursor:pointer"><input type="checkbox" id="cfg-en-trans" style="margin-right:8px"> Enable Translation</label>
       ${inpWrap('Translation Model', 'cfg-trans', 'gpt-3.5-turbo')}
@@ -120,52 +121,111 @@ const renderActBtns = () => {
   if(cfg.enableTrans) html += `<button class="ap-btn" data-act="trans">🌐 Translate</button>`;
   html += `<button class="ap-btn" data-act="ask">✨ Ask AI</button>`;
   if(cfg.enableCapture) html += `<button class="ap-btn" data-act="capture">📝 Capture</button>`;
-  if(cfg.enableSearch) html += `<button class="ap-btn" data-act="search">🔍 Search</button>`;    
+  if(cfg.enableSearch) html += `<button class="ap-btn" data-act="search">🔍 Search</button>`;
   c.innerHTML = html;
 };
 
 const posCard = (id) => {
   const c = document.getElementById(id); c.style.display = 'flex';
-  let l = Math.max(0, window.scrollX + curRect.left), t = window.scrollY + curRect.bottom + 10;
-  if (l + c.offsetWidth > window.scrollX + window.innerWidth) l = Math.max(0, window.scrollX + window.innerWidth - c.offsetWidth - 20);
-  if (t + c.offsetHeight > window.scrollY + window.innerHeight) t = Math.max(0, window.scrollY + curRect.top - c.offsetHeight - 10);
-  c.style.left = l + 'px'; c.style.top = t + 'px';
+
+  if (id === 'ap-act') {
+    c.style.flexDirection = 'row'; // 默认横排
+
+    const active = document.activeElement;
+    const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable);
+
+    let l, t;
+    if (isInput) {
+      const rect = active.isContentEditable ? curRect : active.getBoundingClientRect();
+      l = Math.max(0, window.scrollX + rect.left); // 左侧与输入框对齐
+
+      // 防止右侧超出屏幕
+      if (l + c.offsetWidth > window.scrollX + window.innerWidth) {
+        l = Math.max(0, window.scrollX + window.innerWidth - c.offsetWidth - 10);
+      }
+
+      const spaceNeeded = c.offsetHeight + 10;
+      if (rect.top < spaceNeeded) {
+        // 上方空间不够，在 body 顶部插入空白区域把页面往下挤
+        let spacer = document.getElementById('ap-top-spacer');
+        if (!spacer) {
+          document.body.insertAdjacentHTML('afterbegin', '<div id="ap-top-spacer" style="height:0; transition:height 0.2s; width:100%; pointer-events:none; background:transparent;"></div>');
+          spacer = document.getElementById('ap-top-spacer');
+        }
+        const pushDown = spaceNeeded - rect.top + 5; // 计算需要往下挤多少像素
+        spacer.style.height = pushDown + 'px';
+
+        t = window.scrollY + 5; // 弹窗固定在页面最上方
+      } else {
+        // 空间足够，直接在输入框正上方显示
+        t = window.scrollY + rect.top - spaceNeeded;
+      }
+    } else {
+      // 非输入框场景：优先在选区上方弹出
+      l = Math.max(0, window.scrollX + curRect.left);
+      t = window.scrollY + curRect.top - c.offsetHeight - 10;
+
+      if (t < window.scrollY) { // 上方放不下
+        t = window.scrollY + curRect.top;
+        l = window.scrollX + curRect.right + 15; // 放到选区右侧
+
+        if (l + c.offsetWidth > window.scrollX + window.innerWidth) { // 右侧太窄
+          c.style.flexDirection = 'column'; // 改为竖排
+          l = window.scrollX + window.innerWidth - c.offsetWidth - 10;
+        }
+      }
+    }
+    c.style.left = l + 'px'; c.style.top = t + 'px';
+  } else {
+    // 其他面板的定位逻辑保持不变
+    let l = Math.max(0, window.scrollX + curRect.left), t = window.scrollY + curRect.bottom + 10;
+    if (l + c.offsetWidth > window.scrollX + window.innerWidth) l = Math.max(0, window.scrollX + window.innerWidth - c.offsetWidth - 20);
+    if (t + c.offsetHeight > window.scrollY + window.innerHeight) t = Math.max(0, window.scrollY + curRect.top - c.offsetHeight - 10);
+    c.style.left = l + 'px'; c.style.top = t + 'px';
+  }
 };
 
-const apHide = () => { ['ap-act','ap-trans','ap-pop','ap-side'].forEach(id => document.getElementById(id).style.display='none'); if(abortCtrl) abortCtrl.abort(); };
+const apHide = () => {
+  ['ap-act','ap-trans','ap-pop','ap-side'].forEach(id => document.getElementById(id).style.display='none');
+  if(abortCtrl) abortCtrl.abort();
+  // 移除顶部空白区域
+  const spacer = document.getElementById('ap-top-spacer');
+  if (spacer) spacer.style.height = '0px';
+};
+
 const apToggleSide = () => { const s = document.getElementById('ap-side'); if(s.style.display==='flex') apHide(); else { renderList(); s.style.display='flex'; } };
 
-const apSet = () => { 
-  document.getElementById('cfg-url').value=cfg.url; 
-  document.getElementById('cfg-key').value=cfg.key; 
-  document.getElementById('cfg-mods').value=cfg.models.join(','); 
-  document.getElementById('cfg-trans').value=cfg.trans; 
-  document.getElementById('cfg-trans-prompt').value=cfg.trans_system_prompt; 
+const apSet = () => {
+  document.getElementById('cfg-url').value=cfg.url;
+  document.getElementById('cfg-key').value=cfg.key;
+  document.getElementById('cfg-mods').value=cfg.models.join(',');
+  document.getElementById('cfg-trans').value=cfg.trans;
+  document.getElementById('cfg-trans-prompt').value=cfg.trans_system_prompt;
   document.getElementById('cfg-en-trans').checked=cfg.enableTrans;
   document.getElementById('cfg-en-cap').checked=cfg.enableCapture;
   document.getElementById('cfg-cap-key').value=cfg.captureKey;
   document.getElementById('cfg-en-search').checked=cfg.enableSearch;
-  document.getElementById('cfg-search-url').value=cfg.searchUrl;    
-  document.getElementById('ap-set').style.display='flex'; 
+  document.getElementById('cfg-search-url').value=cfg.searchUrl;
+  document.getElementById('ap-set').style.display='flex';
 };
 
-const apSaveSet = () => { 
-  cfg.url=document.getElementById('cfg-url').value; 
-  cfg.key=document.getElementById('cfg-key').value; 
-  cfg.models=document.getElementById('cfg-mods').value.split(',').map(s=>s.trim()); 
-  cfg.trans=document.getElementById('cfg-trans').value.trim(); 
-  cfg.trans_system_prompt=document.getElementById('cfg-trans-prompt').value.trim(); 
+const apSaveSet = () => {
+  cfg.url=document.getElementById('cfg-url').value;
+  cfg.key=document.getElementById('cfg-key').value;
+  cfg.models=document.getElementById('cfg-mods').value.split(',').map(s=>s.trim());
+  cfg.trans=document.getElementById('cfg-trans').value.trim();
+  cfg.trans_system_prompt=document.getElementById('cfg-trans-prompt').value.trim();
   cfg.enableTrans=document.getElementById('cfg-en-trans').checked;
   cfg.enableCapture=document.getElementById('cfg-en-cap').checked;
   cfg.captureKey=document.getElementById('cfg-cap-key').value.trim() || 'c';
   cfg.enableSearch=document.getElementById('cfg-en-search').checked;
-  cfg.searchUrl=document.getElementById('cfg-search-url').value.trim() || 'https://www.google.com/search?q=';    
-  saveData(); updMods(); renderActBtns(); document.getElementById('ap-set').style.display='none'; 
+  cfg.searchUrl=document.getElementById('cfg-search-url').value.trim() || 'https://www.google.com/search?q=';
+  saveData(); updMods(); renderActBtns(); document.getElementById('ap-set').style.display='none';
 };
 
 const updMods = () => ['ap-pop-mod','ap-side-mod'].forEach(id => { const el = document.getElementById(id); if(el) el.innerHTML = cfg.models.map(m=>`<option value="${m}">${m}</option>`).join(''); });
 
-const getMsgHtml = (m, sid, idx, cid) => m.role === 'user' ? 
+const getMsgHtml = (m, sid, idx, cid) => m.role === 'user' ?
   `<div class="ap-user-row"><div class="ap-user-acts"><div class="ap-icon" data-act="copy">${iCopy}</div><div class="ap-icon" data-act="edit" data-sid="${sid}" data-idx="${idx}" data-cid="${cid}">${iEdit}</div></div><div class="ap-user-bubble">${m.content}</div></div>` :
   `<div class="ap-ai-row"><div style="font-size:20px">✨</div><div class="ap-ai-content">${m.reasoning_content?`<details class="ap-think-det"><summary class="ap-think-sum">显示思路 ⌄</summary><div class="ap-think-content">${m.reasoning_content}</div></details>`:''}<div class="ap-ai-text">${renderMD(m.content)}</div><div class="ap-ai-acts"><div class="ap-icon" data-act="copy">${iCopy}</div><div class="ap-icon" data-act="retry" data-sid="${sid}" data-idx="${idx}" data-cid="${cid}">${iRetry}</div><div class="ap-icon" data-act="more">${iMore}</div><div class="ap-menu"><div class="ap-menu-item" data-act="tool" data-val="Tool 1">🔧 Tool 1</div><div class="ap-menu-item" data-act="tool" data-val="Tool 2">⚙️ Tool 2</div></div></div></div></div>`;
 
@@ -192,7 +252,7 @@ async function fetchAI(msgs, mod, onChunk, onDone, onErr) {
 async function handleSend(sid, cid, inId, modId) {
   const inp = document.getElementById(inId), txt = inp.value.trim(), s = sessions.find(x=>x.id===sid), c = document.getElementById(cid); if(!txt||!s) return;
   inp.value=''; inp.disabled=true; s.messages.push({role:'user', content:txt}); s.updatedAt=Date.now(); saveData(); renderMsgs(cid, s); if(cid==='ap-side-msg') renderList();
-  
+
   c.insertAdjacentHTML('beforeend', `<div class="ap-ai-row ap-stream"><div style="font-size:20px">✨</div><div class="ap-ai-content"><details class="ap-think-det" style="display:none" open><summary class="ap-think-sum">思考中...</summary><div class="ap-think-content"></div></details><div class="ap-ai-text">...</div></div></div>`); c.scrollTop = c.scrollHeight;
   const row = c.lastElementChild, det = row.querySelector('details'), sum = row.querySelector('summary'), res = row.querySelector('.ap-think-content'), txtEl = row.querySelector('.ap-ai-text');
   let fTxt = '', fRes = '', apiMsgs = [{role:"system", content:"You are a helpful assistant."}].concat(s.context?[{role:"user",content:`Context:\n${s.context}`},{role:"assistant",content:"Received."}]:[], s.messages.map(m=>({role:m.role,content:m.content})));
@@ -208,44 +268,44 @@ async function handleSend(sid, cid, inId, modId) {
 
 const apAsk = () => { apHide(); const s = {id:Date.now().toString(), title:curText.substring(0,15)+'...', context:curText, messages:[], updatedAt:Date.now()}; sessions.unshift(s); saveData(); activePop=s.id; posCard('ap-pop'); document.getElementById('ap-pop-in').value=''; document.getElementById('ap-pop-in').focus(); renderMsgs('ap-pop-msg', s); };
 
-const apTrans = () => { 
-  apHide(); posCard('ap-trans'); 
-  const c = document.getElementById('ap-trans-res'); 
-  c.innerHTML = '<span style="color:#999">Translating...</span>'; 
+const apTrans = () => {
+  apHide(); posCard('ap-trans');
+  const c = document.getElementById('ap-trans-res');
+  c.innerHTML = '<span style="color:#999">Translating...</span>';
   let fTxt = '';
   fetchAI(
     [
       {role:"system",content:cfg.trans_system_prompt || 'Translate to Chinese. Only output translation.'},
       {role:"user",content:curText}
-    ],    
-    cfg.trans || cfg.models[0], 
-    d => { if(d.content) { fTxt += d.content; c.innerHTML = renderMD(fTxt); } }, 
-    ()=>{}, 
+    ],
+    cfg.trans || cfg.models[0],
+    d => { if(d.content) { fTxt += d.content; c.innerHTML = renderMD(fTxt); } },
+    ()=>{},
     e => c.innerHTML=`<span style="color:red">${e}</span>`
-  ); 
+  );
 };
 
 const apCapture = () => {
   console.log('[Appine-Debug] 📝 apCapture 函数被触发了！');
-  
+
   const tplKey = cfg.captureKey || 'c';
   const targetUrl = `org-protocol://capture?template=${tplKey}&url=` + encodeURIComponent(location.href) + '&title=' + encodeURIComponent(document.title) + '&body=' + encodeURIComponent(curText);
-  
+
   console.log('[Appine-Debug] 🔗 准备跳转的 URL:', targetUrl);
-  
+
   location.href = targetUrl;
-  apHide(); 
+  apHide();
 };
 
 export default {
   name: 'selection-assistant',
   async setup(a) {
-    api = a; 
-    await loadData(); 
-    initUI(); 
+    api = a;
+    await loadData();
+    initUI();
     updMods();
     renderActBtns();
-        
+
     // 拦截事件，防止宿主网页干扰
     clickHandler = e => {
       // 如果点击发生在我们的 UI 内部，立即阻止事件传播给宿主网页
@@ -261,7 +321,7 @@ export default {
       console.log('[Appine-Debug] 🖱️ 捕获到按钮点击，动作 (act):', act);
       const acts = {
         trans: apTrans, ask: apAsk, capture: apCapture, hide: apHide, toggleSide: apToggleSide, set: apSet,
-        search: () => { window.open(cfg.searchUrl + encodeURIComponent(curText), '_blank'); apHide(); },          
+        search: () => { window.open(cfg.searchUrl + encodeURIComponent(curText), '_blank'); apHide(); },
         cancelSet: () => document.getElementById('ap-set').style.display='none',
         saveSet: apSaveSet,
         copy: () => navigator.clipboard.writeText(t.closest('.ap-user-row, .ap-ai-row').querySelector('.ap-user-bubble, .ap-ai-text').innerText),
@@ -274,7 +334,7 @@ export default {
       };
       if(acts[act]) acts[act]();
     };
-    
+
     // 使用 api.on 注册点击事件 (底层是 window.addEventListener(..., true) 捕获阶段)
     // 这样能抢在 React 之前拿到点击事件
     api.on('click', clickHandler);
@@ -285,18 +345,33 @@ export default {
         e.stopPropagation();
       }
     });
+    // 鼠标移入工具条时，取消自动隐藏
+    document.getElementById('ap-act')?.addEventListener('mouseenter', () => clearTimeout(hideTimer));
 
     api.on('mouseup', e => {
       if(['ap-act','ap-trans','ap-pop','ap-side','ap-set','ap-float'].some(id=>document.getElementById(id)?.contains(e.target))) return;
-      setTimeout(() => { const sel = window.getSelection(), t = sel.toString().trim(); if(t) { curText=t; curRect=sel.getRangeAt(0).getBoundingClientRect(); if(!cfg.key) return apSet(); apHide(); posCard('ap-act'); } else apHide(); }, 50);
+      setTimeout(() => {
+        const sel = window.getSelection(), t = sel.toString().trim();
+        if(t) {
+          curText=t; curRect=sel.getRangeAt(0).getBoundingClientRect();
+          if(!cfg.key) return apSet();
+          apHide(); posCard('ap-act');
+
+          // 3秒后自动隐藏
+          clearTimeout(hideTimer);
+          hideTimer = setTimeout(() => {
+            if (document.getElementById('ap-act').style.display === 'flex') apHide();
+          }, 3000);
+        } else apHide();
+      }, 50);
     });
-    
+
     ['ap-pop-in','ap-side-in'].forEach(id => document.getElementById(id).addEventListener('keydown', e => { if(e.key==='Enter'&&!e.shiftKey) { e.preventDefault(); handleSend(id==='ap-pop-in'?activePop:activeSide, id==='ap-pop-in'?'ap-pop-msg':'ap-side-msg', id, id==='ap-pop-in'?'ap-pop-mod':'ap-side-mod'); } }));
     api.log('Selection Assistant v0.8 loaded');
   },
-  teardown() { 
-    if(abortCtrl) abortCtrl.abort(); 
+  teardown() {
+    if(abortCtrl) abortCtrl.abort();
     if(clickHandler) api.off('click', clickHandler); // 记得清理捕获阶段的事件
-    ['ap-act','ap-trans','ap-pop','ap-float','ap-side','ap-set','ap-style'].forEach(id=>document.getElementById(id)?.remove()); 
+    ['ap-act','ap-trans','ap-pop','ap-float','ap-side','ap-set','ap-style'].forEach(id=>document.getElementById(id)?.remove());
   }
 };
