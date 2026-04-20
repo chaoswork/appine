@@ -132,6 +132,7 @@ static const CGFloat kAppineTabBarHeight = 28.0;
 @property(nonatomic, strong) NSSegmentedControl *tabControl;
 @property(nonatomic, strong) NSView *contentHostView;
 @property(nonatomic, strong) NSView *inactiveOverlayView;
+@property(nonatomic, strong) NSTextField *statusLabel;
 @property(nonatomic, strong) NSMutableArray<AppineTabItem *> *tabs;
 @property(nonatomic, assign) NSInteger activeTabId;
 @property(nonatomic, assign) NSInteger nextTabId;
@@ -280,9 +281,10 @@ static void appine_add_tab(id<AppineBackend> backend);
 - (BOOL)isOpaque { return NO; }
 - (void)drawRect:(NSRect)dirtyRect {
     (void)dirtyRect;
-    [[NSColor colorWithCalibratedWhite:0.65 alpha:0.35] setFill];
+    // 微微变灰即可，0.35 有点影响阅读了。
+    [[NSColor colorWithCalibratedWhite:0.5 alpha:0.05] setFill];
     NSRectFillUsingOperation(self.bounds, NSCompositingOperationSourceOver);
-    [[NSColor colorWithCalibratedWhite:0.45 alpha:0.75] setStroke];
+    [[NSColor colorWithCalibratedWhite:0.5 alpha:0.3] setStroke];
     NSBezierPath *path = [NSBezierPath bezierPathWithRect:NSInsetRect(self.bounds, 0.5, 0.5)];
     [path setLineWidth:1.0];
     [path stroke];
@@ -409,7 +411,47 @@ static void appine_add_tab(id<AppineBackend> backend);
         }
     }
 }
-- (void)undo:(id)sender { (void)sender; [self focusAndSendAction:@selector(undo:)]; }
+- (void)undo:(id)sender {
+    (void)sender;
+    appine_set_active(YES);
+    AppineState *state = appine_state();
+    AppineTabItem *active = appine_find_tab(state.activeTabId);
+
+    APPINE_LOG(@"[appine] ======================================");
+    APPINE_LOG(@"[appine] Action: undo: triggered from Toolbar or Cmd-Z");
+
+    if (active && active.backend) {
+        // 1. 检查 Backend 是否自己实现了 undo:
+        if ([active.backend respondsToSelector:@selector(undo:)]) {
+            APPINE_LOG(@"[appine] Routing undo to backend's custom undo: method");
+            #pragma clang diagnostic push
+            #pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+            [active.backend performSelector:@selector(undo:) withObject:nil];
+            #pragma clang diagnostic pop
+            return;
+        }
+
+        // 2. 检查视图自带的 UndoManager
+        NSUndoManager *undoMgr = nil;
+        if (active.backend.view) {
+            undoMgr = [active.backend.view undoManager];
+        }
+
+        APPINE_LOG(@"[appine] Backend view undoManager: %@, canUndo: %d", undoMgr, undoMgr ? [undoMgr canUndo] : 0);
+
+        if (undoMgr && [undoMgr canUndo]) {
+            APPINE_LOG(@"[appine] Executing undo on view's undoManager");
+            [undoMgr undo];
+            return;
+        } else {
+            APPINE_LOG(@"[appine] View's undoManager is nil or cannot undo right now.");
+        }
+    }
+
+    // 3. 兜底逻辑
+    APPINE_LOG(@"[appine] Falling back to global sendAction for undo:");
+    [self focusAndSendAction:@selector(undo:)];
+}
 - (void)cut:(id)sender { (void)sender; [self focusAndSendAction:@selector(cut:)]; }
 - (void)copy:(id)sender { (void)sender; [self focusAndSendAction:@selector(copy:)]; }
 - (void)paste:(id)sender { (void)sender; [self focusAndSendAction:@selector(paste:)]; }
@@ -720,29 +762,23 @@ static void appine_ensure_container(void) {
     }
 
     state.toolbarView = [[NSView alloc] init];
+    state.toolbarView.autoresizingMask = NSViewWidthSizable | NSViewMinYMargin; // 允许宽度拉伸
     state.toolbarStack = [NSStackView stackViewWithViews:@[]];
     state.toolbarStack.orientation = NSUserInterfaceLayoutOrientationHorizontal;
-    // TODO：这里可能还有点问题，排版还是都靠左边了，有空了再修复。
+    // TODO：这里可能还有点问题，排版还是都靠左边了，Active/Inactive 使用了坐标强制靠右。有空了再修复。
     state.toolbarStack.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
     [state.toolbarView addSubview:state.toolbarStack];
     [state.containerView addSubview:state.toolbarView];
-
-    // 左侧按钮组
-    NSArray *leftBtns = @[@"Deactivate", @"Open File", @"New Tab", @"Close Tab"];
-    NSArray *leftSels = @[@"deactivate:", @"openFile:", @"newTab:", @"closeTab:"];
+    // 1. 左侧按钮组 (默认 addArrangedSubview 会加到 Leading 靠左区域)
+    NSArray *leftBtns = @[@"Open File", @"New Tab", @"Close Tab"];
+    NSArray *leftSels = @[@"openFile:", @"newTab:", @"closeTab:"];
     for (NSUInteger i = 0; i < leftBtns.count; i++) {
         NSButton *btn = [NSButton buttonWithTitle:leftBtns[i] target:g_action_target action:NSSelectorFromString(leftSels[i])];
         [btn setBezelStyle:NSBezelStyleTexturedRounded];
         [state.toolbarStack addArrangedSubview:btn];
     }
 
-    // 中间空白区
-    NSView *spacer = [[NSView alloc] init];
-    // 设置极低的抗拉伸优先级，使其自动填满所有剩余空间
-    [spacer setContentHuggingPriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
-    [state.toolbarStack addArrangedSubview:spacer];
-
-    // 右侧编辑按钮组
+    // 2. 右侧编辑按钮组 (继续加到靠左区域)
     NSArray *rightBtns = @[@"Cut", @"Copy", @"Paste", @"Undo", @"Find"];
     NSArray *rightSels = @[@"cut:", @"copy:", @"paste:", @"undo:", @"find:"];
     for (NSUInteger i = 0; i < rightBtns.count; i++) {
@@ -751,7 +787,16 @@ static void appine_ensure_container(void) {
         [state.toolbarStack addArrangedSubview:btn];
     }
 
+    // 3. 状态指示标签（靠右区域）
+    state.statusLabel = [NSTextField labelWithString:@"Inactive 🔘"];
+    state.statusLabel.font = [NSFont systemFontOfSize:13 weight:NSFontWeightMedium];
+    state.statusLabel.textColor = [NSColor secondaryLabelColor];
+    // 允许左侧边距自动拉伸，使其在窗口缩放时始终吸附在右侧
+    state.statusLabel.autoresizingMask = NSViewMinXMargin | NSViewMinYMargin | NSViewMaxYMargin;
+    [state.toolbarView addSubview:state.statusLabel]; // 注意这里是 toolbarView
+
     state.tabBarView = [[NSView alloc] init];
+    state.tabBarView.autoresizingMask = NSViewWidthSizable; // 允许宽度拉伸
     state.tabControl = [NSSegmentedControl segmentedControlWithLabels:@[] trackingMode:NSSegmentSwitchTrackingSelectOne target:g_action_target action:@selector(tabChanged:)];
     // 等宽分布
     if (@available(macOS 10.13, *)) {
@@ -761,6 +806,7 @@ static void appine_ensure_container(void) {
     [state.containerView addSubview:state.tabBarView];
 
     state.contentHostView = [[NSView alloc] init];
+    state.contentHostView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable; // 允许宽度拉伸
     [state.containerView addSubview:state.contentHostView];
 
     state.inactiveOverlayView = [[AppineInactiveOverlayView alloc] init];
@@ -783,6 +829,14 @@ static void appine_apply_rect(void) {
 
     [state.toolbarView setFrame:NSMakeRect(0, bounds.size.height - th, bounds.size.width, th)];
     [state.toolbarStack setFrame:NSInsetRect(state.toolbarView.bounds, 6, 4)];
+
+    if (state.statusLabel) {
+        [state.statusLabel sizeToFit];
+        CGFloat lblW = state.statusLabel.bounds.size.width;
+        CGFloat lblH = state.statusLabel.bounds.size.height;
+        // X 坐标 = 总宽度 - 标签宽度 - 12 (右边距)
+        [state.statusLabel setFrame:NSMakeRect(bounds.size.width - lblW - 12, (th - lblH) / 2.0, lblW, lblH)];
+    }
     [state.tabBarView setFrame:NSMakeRect(0, ch, bounds.size.width, tbh)];
     [state.tabControl setFrame:NSInsetRect(state.tabBarView.bounds, 6, 2)];
     [state.contentHostView setFrame:NSMakeRect(0, 0, bounds.size.width, ch)];
@@ -805,6 +859,15 @@ static void appine_apply_visual_state(void) {
     state.contentHostView.layer.borderColor = active ? [NSColor keyboardFocusIndicatorColor].CGColor : [NSColor separatorColor].CGColor;
 
     state.inactiveOverlayView.hidden = active;
+
+    // 根据 active 状态切换文字和颜色
+    if (active) {
+        state.statusLabel.stringValue = @"Active ☑️";
+        state.statusLabel.textColor = [NSColor controlTextColor]; // 激活时用深色/亮色
+    } else {
+        state.statusLabel.stringValue = @"Inactive 🔘";
+        state.statusLabel.textColor = [NSColor secondaryLabelColor]; // 非激活时变灰
+    }
 
     for (NSView *v in state.toolbarStack.arrangedSubviews) {
         if ([v isKindOfClass:[NSButton class]]) {
@@ -1008,10 +1071,27 @@ int appine_core_open_file_in_rect(const char *path, int x, int y, int w, int h) 
 
 int appine_core_move_resize(int x, int y, int w, int h) {
     dispatch_async(dispatch_get_main_queue(), ^{
-        appine_state().targetRect = NSMakeRect(x, y, w, h);
+        // 获取当前的尺寸
+        NSRect currentRect = appine_state().targetRect;
+
+        // 如果 w 或 h <= 0，则复用之前的尺寸
+        CGFloat newW = (w > 0) ? w : currentRect.size.width;
+        CGFloat newH = (h > 0) ? h : currentRect.size.height;
+
+        // 如果之前也没有尺寸，给个保底值
+        if (newW <= 0) newW = 800;
+        if (newH <= 0) newH = 600;
+
+        appine_state().targetRect = NSMakeRect(x, y, newW, newH);
         appine_apply_rect();
     });
     return 0;
+}
+
+void appine_core_update_tabs(void) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        appine_rebuild_tabs();
+    });
 }
 
 int appine_core_close_active_tab(void) {
@@ -1019,6 +1099,10 @@ int appine_core_close_active_tab(void) {
         AppineState *state = appine_state();
         AppineTabItem *active = appine_find_tab(state.activeTabId);
         if (active) {
+            // cleanup
+            if ([active.backend respondsToSelector:@selector(cleanup)]) {
+                [active.backend cleanup];
+            }
             NSInteger idx = [state.tabs indexOfObject:active];
             [state.tabs removeObject:active];
             if (state.tabs.count > 0) {
@@ -1135,6 +1219,11 @@ int appine_core_close(void) {
         state.inactiveOverlayView = nil;
 
         // 4. 清空 tabs
+        for (AppineTabItem *item in state.tabs) {
+            if ([item.backend respondsToSelector:@selector(cleanup)]) {
+                [item.backend cleanup];
+            }
+        }
         [state.tabs removeAllObjects];
         state.activeTabId = -1;
 

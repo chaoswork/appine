@@ -10,6 +10,15 @@ English | [简体中文](./README.zh-CN.md)
 
 You can open a browser, read PDFs, listen to music, and watch videos in Emacs. Enjoy the full power of native macOS rendering, smooth scrolling, and hardware acceleration without leaving Emacs!
 
+## Latest Updates
+
+**v0.0.9 Release Notes:**
+1. **Added PDF editing support :)** You can now highlight text, add notes, and undo actions.
+2. **Fixed a bug** where the address bar sometimes disappear.
+3. **Added clearer visual indicators** for Active/Inactive states.
+4. **Improved readability in Inactive mode:** The grayed-out state no longer interferes with reading.
+5. **Fixed an issue** where audio/video would continue playing after closing a tab.
+
 
 ## ✨ Features
 
@@ -88,7 +97,11 @@ To quickly open links on web pages, I wrote a simple link-hints plugin for Appin
 
 Run `M-x appine-open-file`. If you select a PDF file, it will be rendered using macOS PDFKit. Other files will be previewed using Quick Look.
 
-When you forced on the Appine window, you can typing `C-x C-f` to open file in the macOS file chooser. 
+When you forced on the Appine window, you can typing `C-x C-f` to open file in the macOS file chooser.
+
+You can now highlight text and add notes to PDFs.
+
+<img width="2972" height="1594" alt="Image" src="https://github.com/user-attachments/assets/8d83c499-a30e-4a3c-ab17-003278e717b0" />
 
 A video demonstrating Open PDF.
 
@@ -96,7 +109,7 @@ https://github.com/user-attachments/assets/f2dd6c5a-eabb-421b-8d2c-986540f230f6
 
 ### Org-mode Integration
 
-Setting `(setq appine-use-for-org-links t)` enables opening URLs and files with Appine. You can toggle this feature on or off by running `M-x appine-toggle-open-in-org-mode`.
+Setting `(setq appine-use-for-org-links t)` enables opening URLs and files with Appine. You can toggle this feature on or off by running `M-x appine-toggle-use-for-org-links`.
 
 TODO: Add a video demonstrating Org-mode integration.
 
@@ -171,6 +184,12 @@ Support for Windows and Linux systems will be considered in the future. The main
 
 ## ChangeLog
 
+- **v0.0.9:**
+  1. **Added PDF editing support :)** You can now highlight text, add notes, and undo actions.
+  2. **Fixed a bug** where the address bar sometimes disappear.
+  3. **Added clearer visual indicators** for Active/Inactive states.
+  4. **Improved readability in Inactive mode:** The grayed-out state no longer interferes with reading.
+  5. **Fixed an issue** where audio/video would continue playing after closing a tab.
 - **v0.0.8**: Added the **Selection Assistant** plugin, which allows you to capture selected webpage content to `inbox.org`, translate, search, and chat with AI. `appine-open-url` is now smarter.
 - **v0.0.7**: Added browser plugin functionality, added a "Find" feature to the browser and PDF reader, and support for automatic plugin updates.
 - **v0.0.6**: You can now manipulate Appine Windows just like regular Buffers.

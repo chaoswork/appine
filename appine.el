@@ -5,7 +5,7 @@
 ;; Author: Huang Chao <huangchao.cpp@gmail.com>
 ;; Copyright (C) 2026, Huang Chao, all rights reserved.
 ;; Created: 2026-03-15 19:35:21
-;; Version: 0.0.8
+;; Version: 0.0.9
 ;; Package-Requires: ((emacs "29.1"))
 ;; URL: https://github.com/chaoswork/appine
 ;; Keywords: tools, multimedia, convenience, macos
@@ -57,7 +57,7 @@
 (require 'url)
 
 (defconst appine-github-repo "chaoswork/appine")
-(defconst appine-version "0.0.8") ;; 记得打 tag 以使用 github action
+(defconst appine-version "0.0.9") ;; 记得打 tag 以使用 github action
 
 ;;; ==========================================================================
 ;;; 加载模块
@@ -640,7 +640,8 @@ on the right and open the default usage.html help page."
         ;; 如果不可见，把原生视图移到屏幕外，并彻底释放焦点
         (appine--set-active nil)
         (ignore-errors
-          (appine-native-move-resize -9999 -9999 100 100))))))
+          ;; w/h 为 -1 的时候，复用原来的 w/h
+          (appine-native-move-resize -9999 -9999 -1 -1))))))
 
 (defun appine--post-command-focus-restore ()
   "在 Emacs 执行完命令后，如果用户依然停留在 Appine Buffer，则强制抢回焦点。"

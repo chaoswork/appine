@@ -1,7 +1,7 @@
 /*
  * Filename: appine_backend.h
  * Project: Appine (App in Emacs)
- * Description: Emacs dynamic module to embed native macOS views 
+ * Description: Emacs dynamic module to embed native macOS views
  *              (WebKit, PDFKit, Quick Look, etc.) directly inside Emacs windows.
  * Author: Huang Chao <huangchao.cpp@gmail.com>
  * Copyright (C) 2026, Huang Chao, all rights reserved.
@@ -44,6 +44,8 @@ typedef NS_ENUM(NSInteger, AppineBackendKind) {
 @property (nonatomic, assign, readonly) AppineBackendKind kind;
 
 @optional
+// 需要的话需要实现
+- (void)cleanup;
 // 可选实现：处理特定的动作（如 copy, paste, undo 等）
 - (void)performAction:(NSString *)actionName;
 // 显示/隐藏页面内查找栏

@@ -8,6 +8,17 @@
 
 **Appine** 的名字源自 “App in Emacs”，它是一个 Emacs 插件，可以让你在 Emacs 中打开 MacOS 原生的浏览器、PDF 阅读器，还可以听音乐、看视频。无需离开 Emacs，即可享受 macOS 原生渲染、平滑滚动和硬件加速的全部威力！
 
+## 最新更新
+
+v0.0.9 版本更新如下：
+1. 可以编辑 Pdf 了:) 添加了高亮、添加 note 和 undo 功能。
+2. 修复了有时候地址栏不显示的bug
+3. 添加了更加明显的 Active/Inactive 标识。
+4. 即使在 Inactive 的时候，变灰的时候也不会影响阅读了。
+5. 修复了关闭了 tab，视频仍在播放的问题。
+
+
+
 ## ✨ 特性 (Features)
 
 - **把它当作 Emacs 缓冲区来用**: 当 Appine 启动的时候，嵌入的窗口会绑定在 \*Appine Window\* 这个 Buffer 上。可以用 `C-x 1` 最大化，用 `C-x 0` 关闭，用 `C-x o` 在不同的 buffer 中切换。也可以使用 `C-n`, `C-p`, `C-v`, `M-v`, `M-<`, and `M->` 来对 Appine Window 进行滚屏操作。
@@ -80,13 +91,17 @@ https://github.com/user-attachments/assets/f63eff4e-754e-4d4f-b11c-aa9d3f982c67
 ### 打开 PDF 或者其他文档
 运行 `M-x appine-open-file`。选择一个 PDF 文件，它将使用 macOS PDFKit 进行渲染。选择其他文件则会使用 quicklook 进行预览。
 
+现在可以对 pdf 文件进行高亮和添加笔记的操作了。
+
+<img width="2972" height="1594" alt="Image" src="https://github.com/user-attachments/assets/8d83c499-a30e-4a3c-ab17-003278e717b0" />
+
 一段打开 PDF 的视频地址
 
 https://github.com/user-attachments/assets/f2dd6c5a-eabb-421b-8d2c-986540f230f6
 
 ### Org-mode 集成
 
-当 `(setq appine-use-for-org-links t)` 的时候，会使用 Appine 打开 url 和文件。运行 `M-x appine-toggle-open-in-org-mode` 来开启或者关闭该功能。
+当 `(setq appine-use-for-org-links t)` 的时候，会使用 Appine 打开 url 和文件。运行 `M-x appine-toggle-use-for-org-links` 来开启或者关闭该功能。
 
 TODO：一段演示 org-mode 集成的视频
 
@@ -162,6 +177,12 @@ Appine 使用 Emacs 动态模块来桥接 C/Objective-C 和 Emacs Lisp。
 
 ## ChangeLog
 
+- v0.0.9：
+  1. 可以编辑 Pdf 了:) 添加了高亮、添加 note 和 undo 功能。
+  2. 修复了有时候地址栏不显示的bug
+  3. 添加了更加明显的 Active/Inactive 标识。
+  4. 即使在 Inactive 的时候，变灰的时候也不会影响阅读了。
+  5. 修复了关闭了 tab，视频仍在播放的问题。
 - v0.0.8: 增加了 Selection Assistant 插件，可以将选中内容 Capture 网页到 inbox.org, 翻译，搜索，与 AI 对话。`appine-open-url` 现在更加智能了。
 - v0.0.7: 增加了浏览器插件功能，给浏览器和PDF阅读器添加了“查找”功能，并且支持插件自动更新。
 - v0.0.6: 可以像操纵普通 Buffer 那样操纵 Appine Window

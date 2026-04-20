@@ -1,3 +1,5 @@
 *.so
 *.dylib
+.backup
+/test
 .DS_Store

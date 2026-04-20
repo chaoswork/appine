@@ -29,6 +29,7 @@
 static void dylib_dummy_symbol() {} // locate path
 
 extern void appine_core_add_web_tab(NSString *urlString);
+extern void appine_core_update_tabs(void);
 
 // 声明 WKWebView 的私有方法，避免编译器警告
 @interface WKWebView (AppinePrivate)
@@ -168,6 +169,17 @@ extern void appine_core_add_web_tab(NSString *urlString);
     [_webView removeObserver:self forKeyPath:@"canGoForward"];
 }
 
+- (void)cleanup {
+    // 1. 移除强引用的 ScriptMessageHandler，打破循环引用
+    [self.webView.configuration.userContentController removeScriptMessageHandlerForName:@"appineSaveData"];
+    [self.webView.configuration.userContentController removeScriptMessageHandlerForName:@"appineLog"];
+
+    // 2. 停止加载和媒体播放
+    [self.webView stopLoading];
+    [self.webView loadHTMLString:@"" baseURL:nil]; // 强制清空页面，防止视频等资源继续播放
+}
+
+
 - (void)setupUI {
     // 1. 创建主容器 (将被 appine_native 放入 contentHostView)
     _containerView = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600)];
@@ -224,7 +236,7 @@ extern void appine_core_add_web_tab(NSString *urlString);
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     NSString *cfgStr = [defaults stringForKey:@"ap_cfg"] ?: @"{}";
     NSString *sessStr = [defaults stringForKey:@"ap_sess"] ?: @"[]";
-    
+
     // 包装成 JSON 字典
     NSDictionary *storageDict = @{
         @"ap_cfg": cfgStr,
@@ -232,14 +244,14 @@ extern void appine_core_add_web_tab(NSString *urlString);
     };
     NSData *jsonData = [NSJSONSerialization dataWithJSONObject:storageDict options:0 error:nil];
     NSString *jsonString = [[NSString alloc] initWithData:jsonData encoding:NSUTF8StringEncoding];
-    
+
     // 注入到全局变量 window.__APPINE_STORAGE__ 中 (注意注入时机是 AtDocumentStart)
     NSString *injectStorageJS = [NSString stringWithFormat:@"window.__APPINE_STORAGE__ = %@;", jsonString];
     WKUserScript *storageScript = [[WKUserScript alloc] initWithSource:injectStorageJS
                                                          injectionTime:WKUserScriptInjectionTimeAtDocumentStart
                                                       forMainFrameOnly:NO];
     [config.userContentController addUserScript:storageScript];
-    
+
     // 注册 JS 消息处理器，用于接收保存请求
     // 注意：你的 ViewController 需要实现 WKScriptMessageHandler 协议
     [config.userContentController addScriptMessageHandler:self name:@"appineSaveData"];
@@ -301,43 +313,43 @@ extern void appine_core_add_web_tab(NSString *urlString);
     // 1. 读取并注入 content.js (作为基础环境)
     NSString *contentJSPath = [extensionDir stringByAppendingPathComponent:@"content.js"];
     NSString *contentJS = [NSString stringWithContentsOfFile:contentJSPath encoding:NSUTF8StringEncoding error:nil];
-    
+
     if (contentJS) {
         // 将 content.js 作为一个 Script 注入
         WKUserScript *loaderScript = [[WKUserScript alloc] initWithSource:contentJS
                                                             injectionTime:WKUserScriptInjectionTimeAtDocumentEnd
                                                          forMainFrameOnly:YES];
         [config.userContentController addUserScript:loaderScript];
-    
+
         // 2. 遍历 plugins 目录，注入各个插件
         NSArray *plugins = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:pluginsDir error:nil];
         for (NSString *pluginName in plugins) {
             if ([pluginName hasPrefix:@"."]) continue; // 忽略隐藏文件
-    
+
             NSString *pluginIndexPath = [NSString stringWithFormat:@"%@/%@/index.js", pluginsDir, pluginName];
             NSString *pluginJS = [NSString stringWithContentsOfFile:pluginIndexPath encoding:NSUTF8StringEncoding error:nil];
-    
+
             if (pluginJS) {
                 NSLog(@"[Appine-Plugin] 准备注入插件: %@", pluginName);
-    
+
                 NSMutableString *pluginInjectionJS = [NSMutableString string];
-                
-                // 【核心】替换 export default 为 return，包装成 IIFE
+
+                // 替换 export default 为 return，包装成 IIFE
                 NSString *modifiedJS = [pluginJS stringByReplacingOccurrencesOfString:@"export default" withString:@"return"];
-    
+
                 [pluginInjectionJS appendFormat:@"{\n"];
                 [pluginInjectionJS appendFormat:@"  try {\n"];
                 [pluginInjectionJS appendFormat:@"    console.log('[Appine-Plugin] ⏳ 开始解析并执行插件: %@');\n", pluginName];
                 [pluginInjectionJS appendFormat:@"    const pluginObj = (function() {\n%@\n    })();\n", modifiedJS];
-                
+
                 // 调用 content.js 中暴露的 window.PluginLoader
                 [pluginInjectionJS appendFormat:@"    window.PluginLoader.register(pluginObj);\n"];
-                
+
                 [pluginInjectionJS appendFormat:@"  } catch(e) {\n"];
                 [pluginInjectionJS appendFormat:@"    console.log('[Appine-Plugin] ❌ 执行插件 %@ 失败: ' + (e.message || e));\n", pluginName];
                 [pluginInjectionJS appendFormat:@"  }\n"];
                 [pluginInjectionJS appendFormat:@"}\n"];
-    
+
                 // 为每一个插件单独创建一个 WKUserScript
                 WKUserScript *pluginScript = [[WKUserScript alloc] initWithSource:pluginInjectionJS
                                                                     injectionTime:WKUserScriptInjectionTimeAtDocumentEnd
@@ -787,10 +799,17 @@ extern void appine_core_add_web_tab(NSString *urlString);
     if ([keyPath isEqualToString:@"URL"]) {
         // 只有当用户没有在地址栏输入时，才自动更新地址栏文本
         if (self.urlField.window.firstResponder != self.urlField.currentEditor) {
-            self.urlField.stringValue = self.webView.URL.absoluteString ?: @"";
+            // 判断如果是本地文件，则显示 path，否则显示 absoluteString
+            NSURL *url = self.webView.URL;
+            self.urlField.stringValue = url ? (url.isFileURL ? url.path : url.absoluteString) : @"";
         }
     } else if ([keyPath isEqualToString:@"title"]) {
-        self.title = self.webView.title ?: @"Web";
+        NSString *newTitle = self.webView.title;
+        self.title = @"Web";
+        if (newTitle && newTitle.length > 0) {
+            self.title = newTitle;
+            appine_core_update_tabs();
+        }
     } else if ([keyPath isEqualToString:@"canGoBack"]) {
         self.backBtn.enabled = self.webView.canGoBack;
     } else if ([keyPath isEqualToString:@"canGoForward"]) {
@@ -802,14 +821,14 @@ extern void appine_core_add_web_tab(NSString *urlString);
 
 - (void)webView:(WKWebView *)webView decidePolicyForNavigationAction:(WKNavigationAction *)navigationAction decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler {
     NSURL *url = navigationAction.request.URL;
-    
+
     // 1. 拦截 org-protocol 协议
     if ([url.scheme isEqualToString:@"org-protocol"]) {
         APPINE_LOG(@"[Appine-Web] 拦截到 org-protocol: %@", url.absoluteString);
-        
+
         // 2. 阻止 WKWebView 的默认加载行为，防止静默失败
         decisionHandler(WKNavigationActionPolicyCancel);
-        
+
         // 3. 通过 macOS 系统 API 抛出 URL。
         // 因为当前 Emacs 已经运行且（通常）注册了该协议，系统会瞬间将其路由回 Emacs 内部触发 Capture。
         [[NSWorkspace sharedWorkspace] openURL:url];
@@ -960,19 +979,19 @@ extern void appine_core_add_web_tab(NSString *urlString);
 - (void)userContentController:(WKUserContentController *)userContentController didReceiveScriptMessage:(WKScriptMessage *)message {
     if ([message.name isEqualToString:@"appineLog"]) {
         APPINE_LOG(@"[Appine-JS] %@", message.body);
-    }    
+    }
     // 拦截 JS 发来的保存请求
     else if ([message.name isEqualToString:@"appineSaveData"]) {
         NSDictionary *body = message.body;
         NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-        
+
         if (body[@"ap_cfg"]) {
             [defaults setObject:body[@"ap_cfg"] forKey:@"ap_cfg"];
         }
         if (body[@"ap_sess"]) {
             [defaults setObject:body[@"ap_sess"] forKey:@"ap_sess"];
         }
-        
+
         // 同步到磁盘
         [defaults synchronize];
         NSLog(@"[Appine-Plugin] ✅ 全局配置已保存到 NSUserDefaults");
@@ -989,9 +1008,19 @@ extern void appine_core_add_web_tab(NSString *urlString);
 
 - (void)loadURL:(NSString *)urlString {
     if (!urlString || urlString.length == 0) return;
-    
+
     NSURL *url = [NSURL URLWithString:urlString];
     if (!url) return;
+
+    // 在地址栏显示 uri
+    self.urlField.stringValue = url.isFileURL ? url.path : url.absoluteString;
+
+    // 更新标题
+    NSString *tempTitle = url.isFileURL ? url.lastPathComponent : url.host;
+    if (tempTitle && tempTitle.length > 0) {
+        self.title = tempTitle;
+        appine_core_update_tabs();
+    }
 
     // 区分本地文件和网络请求，解决 WKWebView 沙盒权限问题
     if (url.isFileURL) {
