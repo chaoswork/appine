@@ -1,5 +1,5 @@
 // Selection Assistant v0.8
-let api = null, curText = '', curRect = null, abortCtrl = null, clickHandler = null, hideTimer = null;
+let api = null, curText = '', curRect = null, abortCtrl = null, clickHandler = null, hideTimer = null, mouseX = null, mouseY = null;
 
 // 可配置项
 let cfg = { url: 'https://api.openai.com/v1', key: '', models: ['gpt-3.5-turbo', 'gpt-4o', 'deepseek-reasoner'], trans: 'gpt-3.5-turbo', trans_system_prompt: 'Translate to Chinese. Only output translation.', enableTrans: true, enableCapture: true, captureKey: 'c', enableSearch: true, searchUrl: 'https://www.google.com/search?q=' };
@@ -177,8 +177,7 @@ const posCard = (id) => {
 
       // 边界检查：如果下方超出屏幕，放到鼠标上方
       if (t + c.offsetHeight > window.scrollY + window.innerHeight) {
-        t = mouseY - c.offsetHeight - 15;
-        if (t < window.scrollY) t = window.scrollY + 10; // 保底防止上方出界
+        t = Math.max(mouseY + 15, window.scrollY + window.innerHeight - c.offsetHeight - 10);
       }
     }
     c.style.left = l + 'px'; c.style.top = t + 'px';
@@ -272,9 +271,10 @@ async function handleSend(sid, cid, inId, modId) {
   }, err => { inp.disabled=false; txtEl.innerHTML=`<span style="color:red">${err}</span>`; });
 }
 
-const apAsk = () => { apHide(); const s = {id:Date.now().toString(), title:curText.substring(0,15)+'...', context:curText, messages:[], updatedAt:Date.now()}; sessions.unshift(s); saveData(); activePop=s.id; posCard('ap-pop'); document.getElementById('ap-pop-in').value=''; document.getElementById('ap-pop-in').focus(); renderMsgs('ap-pop-msg', s); };
+const apAsk = () => {if(!cfg.key) return apSet(); apHide(); const s = {id:Date.now().toString(), title:curText.substring(0,15)+'...', context:curText, messages:[], updatedAt:Date.now()}; sessions.unshift(s); saveData(); activePop=s.id; posCard('ap-pop'); document.getElementById('ap-pop-in').value=''; document.getElementById('ap-pop-in').focus(); renderMsgs('ap-pop-msg', s); };
 
 const apTrans = () => {
+  if(!cfg.key) return apSet();
   apHide(); posCard('ap-trans');
   const c = document.getElementById('ap-trans-res');
   c.innerHTML = '<span style="color:#999">Translating...</span>';
@@ -363,7 +363,6 @@ export default {
         const sel = window.getSelection(), t = sel.toString().trim();
         if(t) {
           curText=t; curRect=sel.getRangeAt(0).getBoundingClientRect();
-          if(!cfg.key) return apSet();
           apHide(); posCard('ap-act');
 
           // 3秒后自动隐藏
