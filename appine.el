@@ -601,7 +601,8 @@ If no session exists, open the default usage.html help page."
   "Split window on the right and open PATH in a new embedded native tab."
   (interactive "fFile: ")
 
-  (when (file-exists-p path)
+  ;; 文件存在且不是目录
+  (when (and (file-exists-p path) (file-regular-p path))
     (setq file-path (expand-file-name path))
     (when (featurep 'recentf)
       (recentf-add-file file-path)))
