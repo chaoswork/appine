@@ -606,6 +606,16 @@ If no session exists, open the default usage.html help page."
                     (concat "file://" (expand-file-name path)))))
     (appine-open-url file-url))) ; 直接复用 appine-open-url
 
+;;;###autoload
+(defun appine-open-file-from-recentf ()
+  (interactive)
+  (if (and (featurep 'recentf) recentf-list)
+      (when-let* ((file (completing-read "Recent file: "
+                                         (mapcar #'abbreviate-file-name recentf-list)
+                                         nil t nil nil (car recentf-list))))
+        (appine-open-file file))
+    (call-interactively 'appine-open-file)))
+
 (defcustom appine-rss-path nil
   "Path to the data source for Appine RSS.
 This can be a single elfeed.org file, or a directory containing multiple
