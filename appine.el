@@ -618,18 +618,23 @@ If no session exists, open the default usage.html help page."
                    ((featurep 'consult)
                     (consult--read recentf-list
                                    :prompt "Recent file: "
+                                   :sort nil
+                                   :history 'file-name-history
                                    :category 'file
                                    :require-match t))
                    ((featurep 'ivy)
                     (ivy-read "Recent file: " recentf-list
+                              :sort nil
+                              :history 'file-name-history
                               :require-match t))
                    ((featurep 'helm)
                     (helm-comp-read "Recent file: " recentf-list
+                                    :history 'file-name-history
                                     :must-match t))
                    (t
                     (completing-read "Recent file: "
                                      (mapcar #'abbreviate-file-name recentf-list)
-                                     nil t)))))
+                                     nil t nil 'file-name-history)))))
         (appine-open-file file))
     (call-interactively 'appine-open-file)))
 
