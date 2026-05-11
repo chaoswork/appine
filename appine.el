@@ -600,6 +600,12 @@ If no session exists, open the default usage.html help page."
 (defun appine-open-file (path)
   "Split window on the right and open PATH in a new embedded native tab."
   (interactive "fFile: ")
+
+  (when (file-exists-p path)
+    (setq file-path (expand-file-name path))
+    (when (featurep 'recentf)
+      (recentf-add-file file-path)))
+
   ;; 如果 path 为空，直接传空字符串；否则展开为绝对路径并加上 file:// 前缀
   (let ((file-url (if (string-empty-p path)
                       ""
