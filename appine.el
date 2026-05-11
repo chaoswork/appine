@@ -608,11 +608,28 @@ If no session exists, open the default usage.html help page."
 
 ;;;###autoload
 (defun appine-open-file-from-recentf ()
+  "Open file from recentf list"
   (interactive)
-  (if (and (featurep 'recentf) recentf-list)
-      (when-let* ((file (completing-read "Recent file: "
-                                         (mapcar #'abbreviate-file-name recentf-list)
-                                         nil t nil nil (car recentf-list))))
+  (if (and (featurep 'recentf)
+           (boundp 'recentf-list)
+           recentf-list)
+      (when-let ((file
+                  (cond
+                   ((featurep 'consult)
+                    (consult--read recentf-list
+                                   :prompt "Recent file: "
+                                   :category 'file
+                                   :require-match t))
+                   ((featurep 'ivy)
+                    (ivy-read "Recent file: " recentf-list
+                              :require-match t))
+                   ((featurep 'helm)
+                    (helm-comp-read "Recent file: " recentf-list
+                                    :must-match t))
+                   (t
+                    (completing-read "Recent file: "
+                                     (mapcar #'abbreviate-file-name recentf-list)
+                                     nil t)))))
         (appine-open-file file))
     (call-interactively 'appine-open-file)))
 
